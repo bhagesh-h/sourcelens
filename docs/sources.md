@@ -24,6 +24,13 @@ Only open-access copies are downloaded. Requests are spaced per host and
 retried with back-off. bioRxiv and medRxiv rate limits mark downloads as
 deferred instead of waiting; `sourcelens retry` picks them up later.
 
+A server that asks for a wait longer than 10 minutes gets no more requests
+in that run. OpenAlex does this when its daily limit is used up, until
+midnight UTC. The step is marked as failed with the time to try again, the
+rest of the update continues, and the next update searches again. An
+OpenAlex API key (`sourcelens config set openalex_api_key KEY`) raises the
+limit.
+
 ## Limitations
 
 - **Coverage.** PubMed, Europe PMC, arXiv and OpenAlex are searched. Google

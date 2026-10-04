@@ -12,6 +12,9 @@ All notable changes to sourcelens. Versions follow semantic versioning.
 - Project website (`site/index.html`), published to GitHub Pages by
   `.github/workflows/pages.yml`: install buttons for PyPI and the Go
   binaries, the basic commands, links to the documentation.
+- A progress bar in the terminal: one line, redrawn in place, with the
+  finished steps, the time so far and each running step's count or time.
+  Output to a file keeps the `--heartbeat` lines.
 
 ### Changed
 
@@ -22,6 +25,15 @@ All notable changes to sourcelens. Versions follow semantic versioning.
   so links to `releases/latest/download/` stay valid across releases.
 - Logo: the black rim around the hexagon removed and the image cropped to it.
 - PyPI project links point to the website, the source and `docs/`.
+
+### Fixed
+
+- A server asking for a very long wait (OpenAlex sends 7 to 8 hours once its
+  daily limit is used up) no longer stalls the update: waits longer than 10
+  minutes are not kept, the step fails with the time to try again, and the
+  other steps go on.
+- Ctrl+C prints "interrupted" instead of a Python traceback and exits
+  with code 130, in both implementations.
 
 ## 0.0.1 (2026-10-04)
 

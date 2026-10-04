@@ -4,15 +4,62 @@ package main
 // src/sourcelens/common/agelit.py:Http.
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+// A server that asks for a longer wait than this gets no more requests from
+// the step; the step then fails with a note, and the next run tries again.
+const maxRetryWait = 600 * time.Second
+
+var (
+	rateMu      sync.Mutex
+	rateLimited = map[string]time.Time{} // host -> when it accepts requests again
+)
+
+func waitText(d time.Duration) string {
+	if d < time.Hour {
+		return fmt.Sprintf("%.0f min", d.Minutes())
+	}
+	return fmt.Sprintf("%.1f h", d.Hours())
+}
+
+// rateLimitNotes: one line per host that asked for a long wait, for the end of a step's log.
+func rateLimitNotes() []string {
+	rateMu.Lock()
+	defer rateMu.Unlock()
+	hosts := make([]string, 0, len(rateLimited))
+	for h := range rateLimited {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+	var notes []string
+	for _, h := range hosts {
+		note := fmt.Sprintf("rate limited by %s until %s; run again then", h, rateLimited[h].Format("2006-01-02 15:04"))
+		if h == "api.openalex.org" {
+			note += ", or set an OpenAlex API key (sourcelens config)"
+		}
+		notes = append(notes, note)
+	}
+	return notes
+}
+
+// urlHost is the third "/"-separated part of a URL, as python url.split("/")[2].
+func urlHost(rawurl string) string {
+	parts := strings.SplitN(rawurl, "/", 4)
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[2]
+}
 
 // contact: contact email from the settings (or SOURCELENS_EMAIL); empty means
 // no polite-pool address, and Unpaywall is skipped.
@@ -101,6 +148,15 @@ func (c *Client) do(method, rawurl string, o reqOpts) (*Resp, error) {
 		}
 		rawurl += sep + o.params.Encode()
 	}
+	host := urlHost(rawurl)
+	if method == "GET" && !o.raw {
+		rateMu.Lock()
+		_, blocked := rateLimited[host]
+		rateMu.Unlock()
+		if blocked {
+			return nil, nil
+		}
+	}
 	delay := 2 * time.Second
 	var lastErr error
 	for attempt := 1; attempt <= o.tries; attempt++ {
@@ -167,6 +223,15 @@ func (c *Client) do(method, rawurl string, o reqOpts) (*Resp, error) {
 			if s, err := strconv.Atoi(ra); err == nil && time.Duration(s)*time.Second > wait {
 				wait = time.Duration(s) * time.Second
 			}
+		}
+		if wait > maxRetryWait {
+			rateMu.Lock()
+			rateLimited[host] = time.Now().Add(wait)
+			rateMu.Unlock()
+			if c.log != nil {
+				c.log.Printf("%s %d on %s: asked to wait %s; no more requests to %s", method, res.StatusCode, cut140(rawurl), waitText(wait), host)
+			}
+			return nil, nil
 		}
 		if c.log != nil {
 			c.log.Printf("%s %d on %s (try %d); waiting %.0fs", method, res.StatusCode, cut140(rawurl), attempt, wait.Seconds())

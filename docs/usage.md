@@ -119,12 +119,19 @@ Every command that works on a catalogue takes:
 | `--workers` | parallel full-text downloads | 12 |
 | `--parallel` | steps run at the same time | 5 |
 | `--min-stars` | GitHub search hits need this many stars | 3 |
-| `--heartbeat` | seconds between progress lines (0: none) | 120 |
+| `--heartbeat` | seconds between progress lines when the output is not a terminal (0: no progress output) | 120 |
 | `--stop-on-error` | stop after the first failed stage | |
 | `--dry-run` | print the plan and a full-text estimate | |
 
 Options that take several values accept a comma list, for example
 `--sources pubmed,arxiv`.
+
+In a terminal, progress is one line at the bottom, redrawn in place: a bar
+over all steps, the time so far, and each running step with its own count
+(such as `fulltext 340/1200`) or its running time. When the output goes to a
+file, a line per running step is written every `--heartbeat` seconds
+instead. Ctrl+C stops the running steps and the update; the next update
+starts normally.
 
 The steps of an update run in stages:
 

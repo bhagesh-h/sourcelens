@@ -11,12 +11,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -155,7 +157,8 @@ options
   --workers N         parallel full-text downloads (default 12)
   --parallel N        steps run at the same time within a stage (default 5)
   --min-stars N       GitHub search hits need this many stars (default 3)
-  --heartbeat SEC     seconds between progress lines (default 120)
+  --heartbeat SEC     progress lines every SEC seconds when the output is not a
+                      terminal; a terminal shows a progress bar (default 120, 0: none)
   --stop-on-error     stop after the first failed stage
   --dry-run           print the plan and a full-text estimate, then exit
 
@@ -220,12 +223,27 @@ func expand(spec string, vocab []string, groups map[string][]string, what string
 	return out, nil
 }
 
-var sayMu sync.Mutex
+var (
+	sayMu  sync.Mutex
+	status string // the progress bar line kept below the messages (terminal only)
+)
 
 func say(format string, a ...any) {
 	sayMu.Lock()
 	defer sayMu.Unlock()
-	fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, a...))
+	clear := ""
+	if status != "" {
+		clear = "\r\x1b[K"
+	}
+	fmt.Printf("%s[%s] %s\n%s", clear, time.Now().Format("15:04:05"), fmt.Sprintf(format, a...), status)
+}
+
+// setStatus draws the progress bar line below the messages; "" removes it.
+func setStatus(line string) {
+	sayMu.Lock()
+	defer sayMu.Unlock()
+	status = line
+	fmt.Print("\r\x1b[K" + line)
 }
 
 func counts(rows []Row, col string) string {
@@ -409,6 +427,54 @@ func lastLine(path string) string {
 	return runeCut(pyStrip(lines[len(lines)-1]), 150)
 }
 
+const barWidth = 24
+
+// "340/1200" in a step's last log line: how far that step is
+var countRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_/.])(\d+)/(\d+)(?:[^A-Za-z0-9_/.]|$)`)
+
+func clock(d time.Duration) string {
+	s := int(d.Seconds())
+	if s >= 3600 {
+		return fmt.Sprintf("%d:%02d:%02d", s/3600, s%3600/60, s%60)
+	}
+	return fmt.Sprintf("%d:%02d", s/60, s%60)
+}
+
+type activeStep struct {
+	name, log string
+	start     time.Time
+}
+
+// progressLine: [bar] finished/all steps, elapsed time, then each running step with its count or time.
+func progressLine(done, total int, t0 time.Time, active []activeStep, width int) string {
+	frac := float64(done)
+	var parts []string
+	for _, a := range active {
+		m := countRe.FindStringSubmatch(lastLine(a.log))
+		n, of := 0, 0
+		if m != nil {
+			n, _ = strconv.Atoi(m[1])
+			of, _ = strconv.Atoi(m[2])
+		}
+		if m != nil && of > 0 && n <= of {
+			frac += float64(n) / float64(of)
+			parts = append(parts, fmt.Sprintf("%s %s/%s", a.name, m[1], m[2]))
+		} else {
+			parts = append(parts, a.name+" "+clock(time.Since(a.start)))
+		}
+	}
+	filled := barWidth
+	if total > 0 {
+		filled = min(barWidth, int(float64(barWidth)*frac/float64(total)+0.5))
+	}
+	line := fmt.Sprintf("[%s%s] %d/%d steps  %s", strings.Repeat("█", filled), strings.Repeat("░", barWidth-filled),
+		done, total, clock(time.Since(t0)))
+	if len(parts) > 0 {
+		line += "  " + strings.Join(parts, ", ")
+	}
+	return runeCut(line, max(20, width-1))
+}
+
 type result struct {
 	s   step
 	rc  int
@@ -475,35 +541,104 @@ func runPlan(stages [][]step, o opts, label string) int {
 
 	var mu sync.Mutex
 	running := map[string]string{}
+	started := map[string]time.Time{}
 	var runOrder []string
-	stop := make(chan struct{})
+	finished, total := 0, 0
+	for _, st := range stages {
+		total += len(st)
+	}
+	stop, tickerDone := make(chan struct{}), make(chan struct{})
+	tAll := time.Now()
+	// a terminal gets one progress bar line; a log file gets heartbeat lines
+	_, isTerm := stdoutTerminal()
+	bar := o.heartbeat > 0 && isTerm && os.Getenv("TERM") != "dumb"
+	kick := make(chan struct{}, 1) // redraw the bar now: a step started or ended
+	poke := func() {
+		select {
+		case kick <- struct{}{}:
+		default:
+		}
+	}
+	end := func(name string) {
+		mu.Lock()
+		if _, ok := running[name]; ok {
+			delete(running, name)
+			finished++
+		}
+		mu.Unlock()
+		poke()
+	}
 	if o.heartbeat > 0 {
 		go func() {
-			t := time.NewTicker(time.Duration(o.heartbeat) * time.Second)
+			defer close(tickerDone)
+			every := time.Duration(o.heartbeat) * time.Second
+			if bar {
+				every = time.Second
+			}
+			t := time.NewTicker(every)
 			defer t.Stop()
 			for {
 				select {
 				case <-stop:
 					return
+				case <-kick:
+					if !bar {
+						continue
+					}
 				case <-t.C:
-					mu.Lock()
-					var cur [][2]string
-					for _, n := range runOrder {
-						if l, ok := running[n]; ok {
-							cur = append(cur, [2]string{n, l})
+				}
+				mu.Lock()
+				var cur [][2]string
+				var active []activeStep
+				for _, n := range runOrder {
+					if l, ok := running[n]; ok {
+						cur = append(cur, [2]string{n, l})
+						if st, ok := started[n]; ok {
+							active = append(active, activeStep{n, l, st})
 						}
 					}
-					mu.Unlock()
-					for _, c := range cur {
-						say("  ...  %-15s %s", c[0], lastLine(c[1]))
-					}
+				}
+				done := finished
+				mu.Unlock()
+				if bar {
+					width, _ := stdoutTerminal()
+					setStatus(progressLine(done, total, tAll, active, width))
+					continue
+				}
+				for _, c := range cur {
+					say("  ...  %-15s %s", c[0], lastLine(c[1]))
 				}
 			}
 		}()
+	} else {
+		close(tickerDone)
+	}
+	// Ctrl+C reaches the steps too; wait for them, then stop like python's KeyboardInterrupt
+	// (an interrupt that the parent process ignores stays ignored, as in python)
+	var interrupted atomic.Bool
+	sig := make(chan os.Signal, 1)
+	if !signal.Ignored(os.Interrupt) {
+		signal.Notify(sig, os.Interrupt)
+		defer signal.Stop(sig)
+	}
+	go func() {
+		if _, ok := <-sig; ok {
+			interrupted.Store(true)
+		}
+	}()
+	stopTicker := func() {
+		close(stop)
+		<-tickerDone
+		if bar {
+			setStatus("")
+		}
 	}
 	var results []result
-	n, tAll, failed := 0, time.Now(), false
+	n, failed := 0, false
 	for i, stage := range stages {
+		if interrupted.Load() {
+			break
+		}
 		nm := make([]string, len(stage))
 		for j, s := range stage {
 			nm[j] = s.name
@@ -527,17 +662,17 @@ func runPlan(stages [][]step, o opts, label string) int {
 			go func(j int, s step) {
 				defer wg.Done()
 				defer func() { <-sem }()
-				res[j] = runStep(s, logs[j], env)
 				mu.Lock()
-				delete(running, s.name) // the heartbeat reports running steps only
+				started[s.name] = time.Now()
 				mu.Unlock()
+				poke()
+				res[j] = runStep(s, logs[j], env)
+				end(s.name) // the heartbeat and the bar report running steps only
 			}(j, s)
 		}
 		wg.Wait()
 		for _, r := range res {
-			mu.Lock()
-			delete(running, r.s.name)
-			mu.Unlock()
+			end(r.s.name)
 			results = append(results, r)
 			failed = failed || r.rc != 0
 		}
@@ -545,7 +680,11 @@ func runPlan(stages [][]step, o opts, label string) int {
 			break
 		}
 	}
-	close(stop)
+	stopTicker()
+	if interrupted.Load() {
+		fmt.Fprintln(os.Stderr, "interrupted")
+		return 130
+	}
 	var sb strings.Builder
 	for _, r := range results {
 		fmt.Fprintf(&sb, "%s\trc=%d\t%.1f min\t%s\n", r.s.name, r.rc, r.dur.Minutes(), filepath.Base(r.log))
@@ -736,6 +875,9 @@ func cmdUpdate(argv []string) int {
 	}
 	defer lock.Close()
 	rc := runPlan(stages, o, "update")
+	if rc == 130 { // interrupted
+		return rc
+	}
 	newest(10)
 	fmt.Printf("\ncatalogue: %s\n", rpath("progress.csv"))
 	return rc
@@ -899,11 +1041,20 @@ func runStepNow(args []string) int {
 		fmt.Fprintf(os.Stderr, "unknown step %v\n", args)
 		return 2
 	}
+	rc := 0
 	if err := steps[args[0]](args[1:], log); err != nil {
 		log.Printf("ERROR: %v", err)
-		return 1
+		rc = 1
 	}
-	return 0
+	// a server that asked for a long wait: the step is incomplete, the next run tries again
+	notes := rateLimitNotes()
+	for _, n := range notes {
+		log.Printf("%s", n)
+	}
+	if rc == 0 && len(notes) > 0 {
+		rc = 1
+	}
+	return rc
 }
 
 func hasHelp(args []string) bool {

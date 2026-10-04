@@ -46,6 +46,7 @@ Legend: `[x]` done, `[ ]` open
 - [x] Short README; the rest in `docs/`
 - [x] Project website in `site/`, deployed to GitHub Pages by `pages.yml`
 - [x] Release binaries without the version in the file name; logo without the black rim
+- [x] Progress bar in the terminal; long rate-limit waits (OpenAlex daily limit) end the step instead of stalling; clean Ctrl+C
 
 ## Open
 

@@ -232,6 +232,27 @@ class _Session(requests.Session):
             return quote(raw, safe="/:?&=;%#+,@!$'()*~[]")
 
 
+# A server that asks for a longer wait than this (seconds) gets no more requests
+# from the step; the step then fails with a note, and the next run tries again.
+MAX_RETRY_WAIT = 600
+RATE_LIMITED: dict[str, float] = {}  # host -> time (epoch) from which it accepts requests again
+
+
+def wait_text(sec: float) -> str:
+    return f"{sec / 60:.0f} min" if sec < 3600 else f"{sec / 3600:.1f} h"
+
+
+def rate_limit_notes() -> list[str]:
+    """One line per host that asked for a long wait, for the end of a step's log."""
+    notes = []
+    for host, until in sorted(RATE_LIMITED.items()):
+        note = f"rate limited by {host} until {dt.datetime.fromtimestamp(until):%Y-%m-%d %H:%M}; run again then"
+        if host == "api.openalex.org":
+            note += ", or set an OpenAlex API key (sourcelens config)"
+        notes.append(note)
+    return notes
+
+
 class Http:
     """requests.Session with retry/backoff and a minimum interval per host."""
 
@@ -253,6 +274,9 @@ class Http:
     def get(self, url: str, *, params=None, headers=None, timeout=90,
             tries=6, stream=False, ok=(200,), allow_404=True) -> requests.Response | None:
         delay = 2.0
+        host = url.split("/")[2]
+        if host in RATE_LIMITED:
+            return None
         for attempt in range(1, tries + 1):
             self._wait(url)
             try:
@@ -276,6 +300,10 @@ class Http:
             # some servers send "Retry-After: 0" with a 429; never retry faster
             # than our own back-off
             wait = max(delay, float(retry_after)) if retry_after and retry_after.isdigit() else delay
+            if wait > MAX_RETRY_WAIT:
+                RATE_LIMITED[host] = time.time() + wait
+                log(f"GET {r.status_code} on {url[:140]}: asked to wait {wait_text(wait)}; no more requests to {host}")
+                return None
             log(f"GET {r.status_code} on {url[:140]} (try {attempt}); waiting {wait:.0f}s")
             time.sleep(wait)
             delay = min(delay * 2, 120)

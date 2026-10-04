@@ -6,10 +6,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -196,5 +199,57 @@ func TestResolveProject(t *testing.T) {
 	}
 	if _, err := resolveProject("never created", "", false, ""); err == nil {
 		t.Error("a missing catalogue must be reported when not creating")
+	}
+}
+
+func TestProgressLine(t *testing.T) {
+	dir := t.TempDir()
+	ft := filepath.Join(dir, "fulltext.log")
+	_ = os.WriteFile(ft, []byte("[10:00:00] start\n[10:01:00]   300/1200 ok 280, deferred 3\n"), 0o644)
+	oa := filepath.Join(dir, "openalex.log")
+	_ = os.WriteFile(oa, []byte("[10:01:00] GET 429 on https://doi.org/10.1101/2020.01.01 (try 1); waiting 4s\n"), 0o644)
+	now := time.Now()
+	// 2 finished steps plus a quarter of the running one: 2.25 of 4; a DOI is not a count
+	got := progressLine(2, 4, now, []activeStep{{"fulltext", ft, now}, {"openalex", oa, now}}, 200)
+	want := "[" + strings.Repeat("█", 14) + strings.Repeat("░", 10) + "] 2/4 steps  0:00  fulltext 300/1200, openalex 0:00"
+	if got != want {
+		t.Errorf("progressLine:\n got %q\nwant %q", got, want)
+	}
+	if got := progressLine(0, 3, now, nil, 30); got != "["+strings.Repeat("░", 24)+"] 0/" { // cut to the width
+		t.Errorf("progressLine cut: %q", got)
+	}
+}
+
+func TestLongRetryAfterStopsRequestsToThatHost(t *testing.T) {
+	var mu sync.Mutex
+	var hits []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits = append(hits, r.URL.RequestURI())
+		mu.Unlock()
+		w.Header().Set("Retry-After", "27764")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "http://")
+	reset := func() { rateMu.Lock(); rateLimited = map[string]time.Time{}; rateMu.Unlock() }
+	reset()
+	defer reset()
+	c := NewClient(0, nil, nil)
+	t0 := time.Now()
+	if r := c.Get(srv.URL+"/works", reqOpts{}); r != nil {
+		t.Fatalf("first request: got status %d, want nil", r.Status)
+	}
+	if r := c.Get(srv.URL+"/works?page=2", reqOpts{}); r != nil { // no second request
+		t.Fatalf("second request: got status %d, want nil", r.Status)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if time.Since(t0) > 5*time.Second || len(hits) != 1 || hits[0] != "/works" {
+		t.Errorf("hits %v after %v", hits, time.Since(t0))
+	}
+	notes := rateLimitNotes()
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], "rate limited by "+host+" until ") || !strings.HasSuffix(notes[0], "; run again then") {
+		t.Errorf("notes %q", notes)
 	}
 }

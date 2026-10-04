@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import time
 
 import pytest
 
@@ -145,3 +146,50 @@ def test_resolve_project(tmp_path, monkeypatch):
         resolve_project("something else", str(p.dir), False)
     with pytest.raises(ProjectError):
         resolve_project("never created", "", False)
+
+
+def test_progress_line(tmp_path):
+    from sourcelens.cli.main import progress_line
+    ft = tmp_path / "fulltext.log"
+    ft.write_text("[10:00:00] start\n[10:01:00]   300/1200 ok 280, deferred 3\n")
+    oa = tmp_path / "openalex.log"
+    oa.write_text("[10:01:00] GET 429 on https://doi.org/10.1101/2020.01.01 (try 1); waiting 4s\n")
+    now = time.time()
+    line = progress_line(2, 4, now, [("fulltext", ft, now), ("openalex", oa, now)], 200)
+    # 2 finished steps plus a quarter of the running one: 2.25 of 4; a DOI is not a count
+    assert line == "[" + "█" * 14 + "░" * 10 + "] 2/4 steps  0:00  fulltext 300/1200, openalex 0:00"
+    assert progress_line(0, 3, now, [], 30) == "[" + "░" * 24 + "] 0/"  # cut to the width
+
+
+def test_long_retry_after_stops_requests_to_that_host():
+    import http.server
+    import threading
+
+    hits = []
+
+    class TooMany(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(429)
+            self.send_header("Retry-After", "27764")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), TooMany)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    host = f"127.0.0.1:{srv.server_port}"
+    agelit.RATE_LIMITED.clear()
+    try:
+        h = agelit.Http(min_interval=0)
+        t0 = time.time()
+        assert h.get(f"http://{host}/works") is None
+        assert h.get(f"http://{host}/works?page=2") is None  # no second request
+        assert time.time() - t0 < 5 and hits == ["/works"]
+        notes = agelit.rate_limit_notes()
+        assert len(notes) == 1 and notes[0].startswith(f"rate limited by {host} until ")
+        assert notes[0].endswith("; run again then")
+    finally:
+        srv.shutdown()
+        agelit.RATE_LIMITED.clear()

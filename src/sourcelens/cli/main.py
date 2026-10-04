@@ -14,6 +14,7 @@ import datetime as dt
 import importlib
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -160,7 +161,8 @@ options
   --workers N         parallel full-text downloads (default 12)
   --parallel N        steps run at the same time within a stage (default 5)
   --min-stars N       GitHub search hits need this many stars (default 3)
-  --heartbeat SEC     seconds between progress lines (default 120)
+  --heartbeat SEC     progress lines every SEC seconds when the output is not a
+                      terminal; a terminal shows a progress bar (default 120, 0: none)
   --stop-on-error     stop after the first failed stage
   --dry-run           print the plan and a full-text estimate, then exit
 
@@ -210,11 +212,23 @@ def expand(spec: str, vocab: list[str], groups: dict, what: str) -> list[str]:
 
 
 _lock = threading.Lock()
+_status = ""  # the progress bar line kept below the messages (terminal only)
 
 
 def say(msg: str) -> None:
     with _lock:
-        print(f"[{dt.datetime.now():%H:%M:%S}] {msg}", flush=True)
+        clear = "\r\x1b[K" if _status else ""
+        sys.stdout.write(f"{clear}[{dt.datetime.now():%H:%M:%S}] {msg}\n{_status}")
+        sys.stdout.flush()
+
+
+def set_status(line: str) -> None:
+    """Draw the progress bar line below the messages; "" removes it."""
+    global _status
+    with _lock:
+        _status = line
+        sys.stdout.write("\r\x1b[K" + line)
+        sys.stdout.flush()
 
 
 def read_rows(path: Path) -> list[dict]:
@@ -329,6 +343,33 @@ def last_line(path: Path) -> str:
         return ""
 
 
+BAR_WIDTH = 24
+# "340/1200" in a step's last log line: how far that step is
+COUNT_RE = re.compile(r"(?:^|[^A-Za-z0-9_/.])(\d+)/(\d+)(?:[^A-Za-z0-9_/.]|$)")
+
+
+def clock(sec: float) -> str:
+    s = int(sec)
+    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
+
+
+def progress_line(done: int, total: int, t0: float, active: list[tuple[str, Path, float]], width: int) -> str:
+    """[bar] finished/all steps, elapsed time, then each running step with its count or time."""
+    now, frac, parts = time.time(), float(done), []
+    for name, log, start in active:
+        m = COUNT_RE.search(last_line(log))
+        if m and 0 < int(m.group(2)) and int(m.group(1)) <= int(m.group(2)):
+            frac += int(m.group(1)) / int(m.group(2))
+            parts.append(f"{name} {m.group(1)}/{m.group(2)}")
+        else:
+            parts.append(f"{name} {clock(now - start)}")
+    filled = min(BAR_WIDTH, int(BAR_WIDTH * frac / total + 0.5)) if total else BAR_WIDTH
+    line = f"[{'█' * filled}{'░' * (BAR_WIDTH - filled)}] {done}/{total} steps  {clock(now - t0)}"
+    if parts:
+        line += "  " + ", ".join(parts)
+    return line[:max(20, width - 1)]
+
+
 def run_step(step: Step, log: Path, env: dict) -> tuple[Step, int, float, Path]:
     t0 = time.time()
     say(f"start  {step.name:<15} {step}")
@@ -359,16 +400,46 @@ def run_plan(stages: list[list[Step]], o, label: str) -> int:
         env["SOURCELENS_SEARCH_END"] = o.end or dt.date.today().isoformat()
 
     running: dict[str, Path] = {}
+    started: dict[str, float] = {}
+    finished, count_lock = [0], threading.Lock()
+    total = sum(len(st) for st in stages)
     stop = threading.Event()
+    t_all = time.time()
+    # a terminal gets one progress bar line; a log file gets heartbeat lines
+    bar = o.heartbeat > 0 and sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
 
     def heartbeat():
         while not stop.wait(o.heartbeat):
             for name, log in list(running.items()):
                 say(f"  ...  {name:<15} {last_line(log)}")
 
+    kick = threading.Event()  # redraw the bar now: a step started or ended
+
+    def progress():
+        while not stop.is_set():
+            kick.wait(1)
+            kick.clear()
+            if stop.is_set():
+                break
+            active = [(name, log, started[name]) for name, log in list(running.items()) if name in started]
+            set_status(progress_line(finished[0], total, t_all, active, shutil.get_terminal_size().columns))
+
+    def start(s: Step, log: Path):
+        started[s.name] = time.time()
+        kick.set()
+        return run_step(s, log, env)
+
+    def end(name: str) -> None:
+        with count_lock:
+            if running.pop(name, None) is not None:
+                finished[0] += 1
+        kick.set()
+
+    ticker = None
     if o.heartbeat > 0:
-        threading.Thread(target=heartbeat, daemon=True).start()
-    results, n, t_all, failed = [], 0, time.time(), False
+        ticker = threading.Thread(target=progress if bar else heartbeat, daemon=True)
+        ticker.start()
+    results, n, failed = [], 0, False
     try:
         for i, stage in enumerate(stages, 1):
             say(f"== stage {i}/{len(stages)}: {', '.join(s.name for s in stage)}")
@@ -378,19 +449,23 @@ def run_plan(stages: list[list[Step]], o, label: str) -> int:
                     n += 1
                     log = logdir / f"{n:02d}_{s.name}.log"
                     running[s.name] = log
-                    fut = ex.submit(run_step, s, log, env)
-                    # the heartbeat reports running steps only
-                    fut.add_done_callback(lambda _f, name=s.name: running.pop(name, None))
+                    fut = ex.submit(start, s, log)
+                    # the heartbeat and the bar report running steps only
+                    fut.add_done_callback(lambda _f, name=s.name: end(name))
                     futs.append(fut)
                 stage_res = [f.result() for f in futs]
             for s, rc, dur, log in stage_res:
-                running.pop(s.name, None)
+                end(s.name)
                 results.append((s, rc, dur, log))
                 failed = failed or rc != 0
             if failed and o.stop_on_error:
                 break
     finally:
         stop.set()
+        kick.set()
+        if bar and ticker:
+            ticker.join(timeout=5)
+            set_status("")
     (logdir / "summary.txt").write_text("".join(
         f"{s.name}\trc={rc}\t{dur / 60:.1f} min\t{log.name}\n" for s, rc, dur, log in results))
     say(f"finished in {(time.time() - t_all) / 60:.1f} min")
@@ -630,11 +705,16 @@ def run_step_now(args: list[str]) -> int:
         return 2
     mod = importlib.import_module(STEPS[args[0]])
     sys.argv = [f"sourcelens {args[0]}", *args[1:]]
+    rc = 0
     try:
         mod.main()
     except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
-    return 0
+        rc = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    # a server that asked for a long wait: the step is incomplete, the next run tries again
+    notes = agelit.rate_limit_notes()
+    for note in notes:
+        agelit.log(note)
+    return rc or (1 if notes else 0)
 
 
 COMMANDS = ["update", "retry", "query", "export", "status", "list", "config", "sources", "test", "version", "help"]
@@ -696,4 +776,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def entry() -> None:
     """Console script entry point."""
-    sys.exit(main())
+    try:
+        code = main()
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        code = 130
+    sys.exit(code)
