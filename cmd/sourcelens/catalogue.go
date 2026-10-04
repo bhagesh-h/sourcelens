@@ -109,7 +109,7 @@ func loadSeedInfo() map[string]*seedInfo {
 			d = &acc{map[string]bool{}, map[string]bool{}, map[string]map[string]bool{}}
 			tmp[s["doi"]] = d
 		}
-		role := strings.Replace(s["role"], "clock_", "registry_", 1) // seeds written before 1.0
+		role := strings.Replace(s["role"], "clock_", "registry_", 1) // seeds written before 0.0.1
 		d.roles[role] = true
 		d.refs[s["source_repo"]+":"+role] = true
 		if id := orDefault(s["registry_id"], s["clock_name"]); id != "" {

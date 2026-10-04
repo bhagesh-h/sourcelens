@@ -85,7 +85,7 @@ class Classifier:
                 "text": re.compile(rule["text"], f) if rule.get("text") else None,
             })
         self.core_title = re.compile(cfg["core_title_terms"], f) if cfg.get("core_title_terms") else None
-        # catalogues configured before 1.0 name registry roles clock_*
+        # catalogues configured before 0.0.1 name registry roles clock_*
         roles = set(cfg.get("landmark_roles") or [])
         self.landmark_roles = roles | {r.replace("clock_", "registry_", 1) for r in roles}
         self.default_category = cfg.get("default_category") or "application/association"
@@ -94,7 +94,7 @@ class Classifier:
                                     [self.origin_category, "benchmark/comparison", "review", "software/resource"])
         entities = cfg.get("entities")
         if entities is None:
-            entities = cfg.get("clock_names") or {}  # name used before 1.0
+            entities = cfg.get("clock_names") or {}  # name used before 0.0.1
         self.entities = {k: re.compile(r"(?<![\w-])(?:" + v + r")(?![\w-])" if not v.startswith("(?i)")
                                        else "(?i)(?<![\\w-])(?:" + v[4:] + ")(?![\\w-])")
                          for k, v in (entities or {}).items()}
@@ -202,7 +202,7 @@ def load_seeds() -> dict:
     out: dict[str, dict] = {}
     for s in read_csv(SEEDS / "local_seeds.csv"):
         d = out.setdefault(s["doi"], {"roles": set(), "refs": set(), "ids": {}})
-        role = s["role"].replace("clock_", "registry_", 1)  # seeds written before 1.0
+        role = s["role"].replace("clock_", "registry_", 1)  # seeds written before 0.0.1
         d["roles"].add(role)
         d["refs"].add(f"{s['source_repo']}:{role}")
         rid = s.get("registry_id") or s.get("clock_name") or ""

@@ -27,7 +27,7 @@ Legend: `[x]` done, `[ ]` open
 - [x] Python and Go implementations with the same commands, flags and output; parity check
 - [x] Run lock shared by both implementations
 
-### 1.0.0, 2026-10-04
+### 0.0.1, 2026-10-04
 - [x] Renamed to sourcelens (PyPI name, command, Go module github.com/bhagesh-h/sourcelens); publish workflow and publish.md
 - [x] `sourcelens "TOPIC"`: a catalogue for any topic from one line; commas, semicolons and OR separate alternatives, words are required, quotes keep phrases
 - [x] One catalogue per topic (`--topic`, `--dir`, `sourcelens list`); the default topic in the output folder itself
@@ -38,11 +38,11 @@ Legend: `[x]` done, `[ ]` open
 - [x] Native installs: `pip install sourcelens` (PyMuPDF optional, poppler fallback) and `go install`; Docker optional
 - [x] Unit tests (Go and Python), CI and release workflows (Go binaries, PyPI trusted publishing), Makefile, Dockerfile
 - [x] README rewritten; `docs/configuration.md`; CHANGELOG
-- [x] Output folder for this machine kept at the Zotero folder (settings); the existing catalogue migrated to the 1.0 format
+- [x] Output folder for this machine kept at the Zotero folder (settings); the existing catalogue migrated to the 0.0.1 format
 
 ## Open
 
-- [ ] Register the pending trusted publishers on PyPI and TestPyPI (publish.md), then tag v1.0.0
+- [ ] Register the pending trusted publishers on PyPI and TestPyPI (publish.md), then tag v0.0.1
 - [ ] Go: PDF to Markdown closer to pymupdf4llm (headings, tables)
 - [ ] Ordered JSON for records in Go, so `records.jsonl.gz` is byte-identical between implementations (content already is)
 - [ ] Parity cases that run `update` and `retry` against network sources on a sandbox catalogue

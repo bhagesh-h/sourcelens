@@ -1,6 +1,6 @@
 name: release
 
-# Push a tag such as v1.0.0 to build the Go binaries for Linux and macOS and
+# Push a tag such as v0.0.1 to build the Go binaries for Linux and macOS and
 # attach them to a GitHub release. The Python package is published by
 # publish.yml from the same tag.
 

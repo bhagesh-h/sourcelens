@@ -92,7 +92,7 @@ func LoadClassifier() *Classifier {
 	if n := nodeChild(root, "landmark_roles"); n != nil {
 		for _, x := range n.Content {
 			c.landmarkRoles[x.Value] = true
-			// catalogues configured before 1.0 name registry roles clock_*
+			// catalogues configured before 0.0.1 name registry roles clock_*
 			c.landmarkRoles[strings.Replace(x.Value, "clock_", "registry_", 1)] = true
 		}
 	}
@@ -113,7 +113,7 @@ func LoadClassifier() *Classifier {
 	}
 	ents := nodeChild(root, "entities")
 	if ents == nil {
-		ents = nodeChild(root, "clock_names") // name used before 1.0
+		ents = nodeChild(root, "clock_names") // name used before 0.0.1
 	}
 	for _, kv := range orderedMapping(ents) {
 		v := kv.Value.Value

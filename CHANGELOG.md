@@ -2,7 +2,7 @@
 
 All notable changes to sourcelens. Versions follow semantic versioning.
 
-## 1.0.0 (2026-10-04)
+## 0.0.1 (2026-10-04)
 
 First public release, under the name sourcelens (developed as litsearch and
 litSearch before). sourcelens is a general tool: the research topic comes from
@@ -59,7 +59,7 @@ it was built for is the default topic.
 - The Docker launchers (`run.sh`), the sequential `update_all.sh` and the
   per-workspace `config/local.yaml`; settings replace them.
 
-## 2.0 (2026-10-04, unreleased, as litSearch)
+## litSearch 2.0 (2026-10-04, unreleased)
 
 - Python and Go implementations with the same commands, flags and outputs,
   each with its own Docker image.
@@ -67,7 +67,7 @@ it was built for is the default topic.
   Nature, BibTeX, RIS, EndNote, CSL-JSON).
 - One configuration file kept in the output folder.
 
-## 1.x (2026-09-29 to 2026-10-04, unreleased, as agingcat)
+## agingcat 1.x (2026-09-29 to 2026-10-04, unreleased)
 
 - The aging-clock literature pipeline: PubMed, Europe PMC and arXiv searches,
   seeds from local projects, an append-only chronological `progress.csv`,

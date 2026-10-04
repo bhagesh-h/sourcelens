@@ -431,7 +431,7 @@ It then compares stdout, stderr, exit codes and every file written. A change
 to one implementation is finished when the parity check passes.
 
 Releasing: set the version in `src/sourcelens/__init__.py` and
-`cmd/sourcelens/main.go`, then push a tag such as `v1.0.1`. Two workflows run:
+`cmd/sourcelens/main.go`, then push a tag such as `v0.0.2`. Two workflows run:
 
 - `publish` uploads the Python package to PyPI;
 - `release` attaches the Go binaries for Linux and macOS to a GitHub release.

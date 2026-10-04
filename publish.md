@@ -80,23 +80,23 @@ first successful upload.
 
 ## Releasing a version
 
-The example releases `1.0.1`. For the first release, use `1.0.0` and skip
+The example releases `0.0.2`. For the first release, use `0.0.1` and skip
 step 1.
 
 ### 1. Set the version
 
 Edit both files to the same version:
 
-- `src/sourcelens/__init__.py`: `__version__ = "1.0.1"`
-- `cmd/sourcelens/main.go`: `var version = "1.0.1"`
+- `src/sourcelens/__init__.py`: `__version__ = "0.0.2"`
+- `cmd/sourcelens/main.go`: `var version = "0.0.2"`
 
-Versions follow [semantic versioning](https://semver.org): patch (`1.0.1`)
-for fixes, minor (`1.1.0`) for new features, major (`2.0.0`) for changes
+Versions follow [semantic versioning](https://semver.org): patch (`0.0.2`)
+for fixes, minor (`0.1.0`) for new features, major (`1.0.0`) for changes
 that break existing commands or files.
 
 ### 2. Update the changelog
 
-Add a section `## 1.0.1 (YYYY-MM-DD)` at the top of `CHANGELOG.md` that
+Add a section `## 0.0.2 (YYYY-MM-DD)` at the top of `CHANGELOG.md` that
 lists what changed.
 
 ### 3. Check locally
@@ -119,7 +119,7 @@ rm -rf dist && python -m build && python -m twine check --strict dist/*
 
 ```bash
 git add src/sourcelens/__init__.py cmd/sourcelens/main.go CHANGELOG.md
-git commit -m "Release 1.0.1"
+git commit -m "Release 0.0.2"
 git push origin main
 ```
 
@@ -144,14 +144,14 @@ Wait until the **ci** workflow on `main` is green in the Actions tab.
    which are not on TestPyPI.
 
 TestPyPI, like PyPI, never accepts the same version twice. To test again
-after a fix, use a pre-release version such as `1.0.1rc1`. Set it in both
+after a fix, use a pre-release version such as `0.0.2rc1`. Set it in both
 version files and commit before running the workflow again.
 
 ### 6. Tag and publish
 
 ```bash
-git tag -a v1.0.1 -m "sourcelens 1.0.1"
-git push origin v1.0.1
+git tag -a v0.0.2 -m "sourcelens 0.0.2"
+git push origin v0.0.2
 ```
 
 The tag starts two workflows:
