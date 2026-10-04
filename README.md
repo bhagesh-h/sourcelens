@@ -438,7 +438,8 @@ Releasing: set the version in `src/sourcelens/__init__.py` and
 
 [publish.md](https://github.com/bhagesh-h/sourcelens/blob/main/publish.md)
 has the one-time PyPI setup and the release steps, including a trial upload to
-TestPyPI.
+TestPyPI. Its local commands run in a Docker container (`publish/publish.sh`),
+so nothing is installed on the machine that releases.
 
 ## Limitations
 

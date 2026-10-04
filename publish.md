@@ -4,6 +4,10 @@ This guide publishes the Python package `sourcelens` to PyPI. The workflow
 `.github/workflows/publish.yml` does the upload with PyPI trusted publishing:
 GitHub proves its identity to PyPI, so no API token is stored anywhere.
 
+Every local command runs in a Docker container through `publish/publish.sh`,
+so neither sourcelens nor the build tools are installed on your machine. You
+need Docker and git.
+
 You do the one-time setup once. After that, every release is a version bump
 and a tag.
 
@@ -27,6 +31,23 @@ The build job:
 
 The tag also starts `.github/workflows/release.yml`, which attaches the Go
 binaries to a GitHub release.
+
+## The release container
+
+| command | what it does |
+|---|---|
+| `publish/publish.sh check` | the checks of the build job above, plus `ruff`. The sdist and the wheel are left in `dist/`. |
+| `publish/publish.sh testpypi [VERSION]` | installs sourcelens from TestPyPI into a clean container and runs `sourcelens version` and `sourcelens test` |
+| `publish/publish.sh pypi [VERSION]` | the same, from PyPI |
+| `publish/publish.sh upload testpypi` or `upload pypi` | uploads `dist/` with an API token; only for publishing without GitHub Actions |
+| `publish/publish.sh shell` | a shell in the container, with the repository in `/src` |
+
+The image `sourcelens-publish:py3.12` is built on the first run and reused
+afterwards. `PYTHON_VERSION=3.10 publish/publish.sh check` checks with another
+Python version. `docker image rm sourcelens-publish:py3.12` removes the image.
+
+The repository is mounted into the container. Commands run as your user, so
+the files in `dist/` belong to you.
 
 ## One-time setup
 
@@ -80,8 +101,7 @@ first successful upload.
 
 ## Releasing a version
 
-The example releases `0.0.2`. For the first release, use `0.0.1` and skip
-step 1.
+The example releases `0.0.2`.
 
 ### 1. Set the version
 
@@ -102,18 +122,11 @@ lists what changed.
 ### 3. Check locally
 
 ```bash
-make python          # editable install with the test and build tools
-make test            # unit tests and the append-only check (Go and Python)
-make dist            # builds dist/*.tar.gz and dist/*.whl and runs twine check
+publish/publish.sh check
 ```
 
-`make test` needs Go for its Go half. To check only the Python package:
-
-```bash
-python -m pytest -q
-sourcelens test
-rm -rf dist && python -m build && python -m twine check --strict dist/*
-```
+This runs the checks of the publish workflow in the container. The Go
+implementation is checked by the **ci** workflow on GitHub in the next step.
 
 ### 4. Commit and push
 
@@ -127,21 +140,18 @@ Wait until the **ci** workflow on `main` is green in the Actions tab.
 
 ### 5. Trial upload to TestPyPI (recommended)
 
-1. Open **Actions > publish > Run workflow**.
+1. Open **Actions > publish > Run workflow**. With the GitHub CLI you can
+   instead run `gh workflow run publish.yml -f target=testpypi`.
 2. Choose branch `main`, target `testpypi`, and click **Run workflow**.
-3. When it finishes, test the upload in a clean environment:
+3. When it finishes, test the upload in a clean container:
 
    ```bash
-   python -m venv /tmp/try && . /tmp/try/bin/activate
-   pip install --index-url https://test.pypi.org/simple/ \
-               --extra-index-url https://pypi.org/simple/ sourcelens
-   sourcelens version
-   sourcelens test
-   deactivate
+   publish/publish.sh testpypi 0.0.2
    ```
 
-   The second index provides the dependencies (requests, PyYAML, lxml),
-   which are not on TestPyPI.
+   The dependencies (requests, PyYAML, lxml) are not on TestPyPI, so they
+   are installed from PyPI. If pip does not find the new version yet, wait
+   a minute and run the command again.
 
 TestPyPI, like PyPI, never accepts the same version twice. To test again
 after a fix, use a pre-release version such as `0.0.2rc1`. Set it in both
@@ -167,43 +177,41 @@ The tag starts two workflows:
 - A clean install works:
 
   ```bash
-  pipx install sourcelens        # or: pip install sourcelens
-  sourcelens version
+  publish/publish.sh pypi 0.0.2
   ```
 
 ## Publishing without GitHub Actions
 
 Use this only if the workflow cannot be used. It needs an API token.
 
-1. On pypi.org open **Account settings > API tokens** and create a token. For
-   the very first upload the scope must be "Entire account"; afterwards,
-   create a token scoped to the `sourcelens` project and delete the broad one.
-2. Build and upload:
+1. On pypi.org open **Account settings > API tokens** and create a token
+   scoped to the `sourcelens` project.
+2. Build, check and upload:
 
    ```bash
-   rm -rf dist
-   python -m pip install --upgrade build twine
-   python -m build
-   python -m twine check --strict dist/*
-   python -m twine upload dist/*
+   publish/publish.sh check
+   publish/publish.sh upload pypi
    ```
 
-   When asked, the username is `__token__` and the password is the token,
-   including its `pypi-` prefix.
+   twine asks for the password: paste the token, including its `pypi-`
+   prefix. The username is set to `__token__` for you. The token is not
+   stored anywhere.
 
-For TestPyPI, create the token on test.pypi.org and upload with
-`python -m twine upload --repository testpypi dist/*`.
+For TestPyPI, create the token on test.pypi.org and run
+`publish/publish.sh upload testpypi`.
 
 ## Troubleshooting
 
 | message | cause and fix |
 |---|---|
-| `invalid-publisher` / `Trusted publishing exchange failure` | the pending publisher does not match the run. Check owner `bhagesh-h`, repository `sourcelens`, workflow `publish.yml` and environment (`pypi` or `testpypi`) letter for letter. |
+| `invalid-publisher` / `Trusted publishing exchange failure` | the trusted publisher does not match the run. Check owner `bhagesh-h`, repository `sourcelens`, workflow `publish.yml` and environment (`pypi` or `testpypi`) letter for letter. |
 | `File already exists` / `400 ... version already exists` | PyPI never accepts a version twice, even after deleting it. Raise the version and release again. |
 | `tag vX does not match version Y` | the tag and `__version__` differ. Delete the tag (`git push --delete origin vX && git tag -d vX`), fix the version, tag again. |
 | `... differ` in "Check that the versions agree" | `src/sourcelens/__init__.py` and `cmd/sourcelens/main.go` have different versions. |
-| `twine check` fails | the README does not render on PyPI. Run `python -m twine check dist/*` locally and fix the reported line. |
+| `twine check` fails | the README does not render on PyPI. Run `publish/publish.sh check` and fix the reported line. |
 | the job waits | the `pypi` environment has a required reviewer. Approve it in the run's page. |
+| `permission denied ... docker.sock` | your user may not use Docker. Run `sudo usermod -aG docker $USER`, then log out and in again. |
+| `No matching distribution found for sourcelens==X` | the version is not on that index (yet). Check the project page; TestPyPI can take a minute to list a new upload. |
 
 ## Files that make up the package
 
@@ -215,3 +223,4 @@ For TestPyPI, create the token on test.pypi.org and upload with
 | `README.md` | the PyPI project description (links are absolute so they work on PyPI) |
 | `LICENSE` | GPL-3.0, included in both distributions |
 | `CHANGELOG.md`, `docs/`, `tests/` | included in the sdist |
+| `publish/Dockerfile`, `publish/publish.sh` | the release container; not part of the package |

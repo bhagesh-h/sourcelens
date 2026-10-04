@@ -39,10 +39,13 @@ Legend: `[x]` done, `[ ]` open
 - [x] Unit tests (Go and Python), CI and release workflows (Go binaries, PyPI trusted publishing), Makefile, Dockerfile
 - [x] README rewritten; `docs/configuration.md`; CHANGELOG
 - [x] Output folder for this machine kept at the Zotero folder (settings); the existing catalogue migrated to the 0.0.1 format
+- [x] Trusted publishers on PyPI and TestPyPI; v0.0.1 published to PyPI with the Go binaries on the GitHub release
+
+### Release tooling, 2026-10-04
+- [x] `publish/publish.sh`: release checks, install tests and manual upload in a Docker container
 
 ## Open
 
-- [ ] Register the pending trusted publishers on PyPI and TestPyPI (publish.md), then tag v0.0.1
 - [ ] Go: PDF to Markdown closer to pymupdf4llm (headings, tables)
 - [ ] Ordered JSON for records in Go, so `records.jsonl.gz` is byte-identical between implementations (content already is)
 - [ ] Parity cases that run `update` and `retry` against network sources on a sandbox catalogue

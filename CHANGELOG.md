@@ -2,6 +2,14 @@
 
 All notable changes to sourcelens. Versions follow semantic versioning.
 
+## Unreleased
+
+### Added
+
+- `publish/publish.sh`: the local release commands (build and check, install
+  tests from TestPyPI and PyPI, manual upload) run in a Docker container, so
+  nothing is installed on the machine that releases.
+
 ## 0.0.1 (2026-10-04)
 
 First public release, under the name sourcelens (developed as litsearch and
