@@ -1,6 +1,6 @@
 """Unit tests for the Python implementation.
 
-cmd/litsearch/litsearch_test.go checks the same cases against the Go
+cmd/sourcelens/sourcelens_test.go checks the same cases against the Go
 implementation, so both must keep returning these values.
 """
 
@@ -11,9 +11,9 @@ import re
 
 import pytest
 
-from litsearch.common import agelit
-from litsearch.common.flags import parse_flags
-from litsearch.common.settings import (
+from sourcelens.common import agelit
+from sourcelens.common.flags import parse_flags
+from sourcelens.common.settings import (
     ProjectError,
     config_topic,
     default_topic,
@@ -21,7 +21,7 @@ from litsearch.common.settings import (
     topic_config,
     topic_slug,
 )
-from litsearch.common.terms import (
+from sourcelens.common.terms import (
     arxiv_term,
     epmc_term,
     github_query,
@@ -32,7 +32,7 @@ from litsearch.common.terms import (
     term_regex,
     word_matcher,
 )
-from litsearch.query import refs
+from sourcelens.query import refs
 
 
 @pytest.mark.parametrize("text,want", [
@@ -136,8 +136,8 @@ def test_topic_config():
 
 
 def test_resolve_project(tmp_path, monkeypatch):
-    monkeypatch.setenv("LITSEARCH_SETTINGS", str(tmp_path / "settings.yaml"))
-    monkeypatch.setenv("LITSEARCH_OUTPUT", str(tmp_path / "out"))
+    monkeypatch.setenv("SOURCELENS_SETTINGS", str(tmp_path / "settings.yaml"))
+    monkeypatch.setenv("SOURCELENS_OUTPUT", str(tmp_path / "out"))
     p = resolve_project("CRISPR base editing", "", True, "2025-06-01")
     assert p.created and p.dir == tmp_path / "out" / "crispr-base-editing"
     assert p.config.is_file()

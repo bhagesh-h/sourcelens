@@ -1,4 +1,4 @@
-module github.com/bhagesh-h/litSearch
+module github.com/bhagesh-h/sourcelens
 
 go 1.23
 

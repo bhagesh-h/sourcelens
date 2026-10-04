@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "litsearch"
+name = "sourcelens"
 dynamic = ["version"]
 description = "Collect the latest research on any topic: papers, preprints, open-access full texts, code and websites in one append-only catalogue."
 readme = "README.md"
@@ -20,6 +20,10 @@ classifiers = [
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
@@ -32,31 +36,34 @@ dependencies = [
 [project.optional-dependencies]
 # better PDF to Markdown/text conversion; without it poppler-utils is used when installed
 pdf = ["pymupdf>=1.24", "pymupdf4llm>=0.0.17"]
-dev = ["pytest>=7", "ruff>=0.5"]
+dev = ["pytest>=7", "ruff>=0.5", "build>=1.0", "twine>=5.0"]
 
 [project.scripts]
-litsearch = "litsearch.cli.litsearch:entry"
+sourcelens = "sourcelens.cli.main:entry"
 
 [project.urls]
-Homepage = "https://github.com/bhagesh-h/litSearch"
-Documentation = "https://github.com/bhagesh-h/litSearch#readme"
-Issues = "https://github.com/bhagesh-h/litSearch/issues"
+Homepage = "https://github.com/bhagesh-h/sourcelens"
+Documentation = "https://github.com/bhagesh-h/sourcelens#readme"
+Issues = "https://github.com/bhagesh-h/sourcelens/issues"
+Changelog = "https://github.com/bhagesh-h/sourcelens/blob/main/CHANGELOG.md"
 
 [tool.hatch.version]
-path = "src/litsearch/__init__.py"
+path = "src/sourcelens/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/litsearch"]
-exclude = ["src/litsearch/defaults/default.yaml"]
+packages = ["src/sourcelens"]
+exclude = ["src/sourcelens/defaults/default.yaml"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"cmd/litsearch/defaults/default.yaml" = "litsearch/defaults/default.yaml"
+"cmd/sourcelens/defaults/default.yaml" = "sourcelens/defaults/default.yaml"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "src/litsearch",
-    "cmd/litsearch/defaults/default.yaml",
+    "src/sourcelens",
+    "cmd/sourcelens/defaults/default.yaml",
     "tests",
+    "docs",
+    "publish.md",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
@@ -74,5 +81,5 @@ select = ["E", "F", "W", "I"]
 
 [tool.ruff.lint.per-file-ignores]
 # long regular expressions that must match the Go implementation character for character
-"src/litsearch/common/settings.py" = ["E501"]
-"src/litsearch/pullrepos/build_repos.py" = ["E501"]
+"src/sourcelens/common/settings.py" = ["E501"]
+"src/sourcelens/pullrepos/build_repos.py" = ["E501"]

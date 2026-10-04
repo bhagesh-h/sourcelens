@@ -18,7 +18,7 @@ venv/
 *.local.yaml
 settings.yaml
 
-# Catalogues are written to the output folder (litsearch config), not here
+# Catalogues are written to the output folder (sourcelens config), not here
 research/
 exports/
 

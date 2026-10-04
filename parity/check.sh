@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Parity check between the Python and the Go implementation of litsearch.
+# Parity check between the Python and the Go implementation of sourcelens.
 #
 #   parity/check.sh             every case in parity/cases.txt
 #   parity/check.sh -k export   only cases containing "export"
 #
-# LITSEARCH_PY and LITSEARCH_GO name the two commands (defaults: litsearch
-# from the active Python environment, and bin/litsearch built with `make go`).
+# SOURCELENS_PY and SOURCELENS_GO name the two commands (defaults: sourcelens
+# from the active Python environment, and bin/sourcelens built with `make go`).
 # Each case runs through both; stdout, stderr and the exit code must match,
 # apart from the implementation name, timestamps, durations and the {X}
 # placeholder (py / go) in paths. Files written under {W}/ and under
@@ -13,8 +13,8 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-PY="${LITSEARCH_PY:-$(command -v litsearch || echo "python3 -m litsearch")}"
-GO="${LITSEARCH_GO:-$ROOT/bin/litsearch}"
+PY="${SOURCELENS_PY:-$(command -v sourcelens || echo "python3 -m sourcelens")}"
+GO="${SOURCELENS_GO:-$ROOT/bin/sourcelens}"
 FILTER=""
 [[ "${1:-}" == "-k" ]] && FILTER="${2:-}"
 W="$(mktemp -d)"
@@ -22,7 +22,7 @@ trap 'rm -rf "$W"' EXIT
 OUT_BASE="$($GO config | sed -n 's/^output folder *//p')"
 
 norm() {
-  sed -E -e 's/litsearch ([0-9.]+) \((python|go)\)/litsearch \1 (IMPL)/' \
+  sed -E -e 's/sourcelens ([0-9.]+) \((python|go)\)/sourcelens \1 (IMPL)/' \
          -e 's#parity_(py|go)/#parity_X/#g; s#proj_(py|go)#proj_X#g' \
          -e "s#$W#{W}#g" \
          -e '/^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]/d' \

@@ -1,6 +1,6 @@
-# litsearch <img src="logo/logo.png" alt="litsearch logo" width="160" align="right"/>
+# sourcelens <img src="https://raw.githubusercontent.com/bhagesh-h/sourcelens/main/logo/logo.png" alt="sourcelens logo" width="160" align="right"/>
 
-litsearch collects the latest research on a topic and keeps it in one
+sourcelens collects the latest research on a topic and keeps it in one
 chronological catalogue. Give it a topic and it gathers five kinds of material:
 
 - papers and preprints from PubMed, Europe PMC, arXiv and OpenAlex;
@@ -13,51 +13,51 @@ Run it again later and it adds only what is new. Nothing you have edited in
 the catalogue is ever overwritten.
 
 ```bash
-pip install litsearch
-litsearch "CRISPR base editing"
+pip install sourcelens
+sourcelens "CRISPR base editing"
 ```
 
 ## Contents
 
-- [Install](#install)
-- [Quick start](#quick-start)
-- [How a topic becomes a search](#how-a-topic-becomes-a-search)
-- [Commands](#commands)
-- [Where the results go](#where-the-results-go)
-- [Settings](#settings)
-- [Configuration of a catalogue](#configuration-of-a-catalogue)
-- [Sources](#sources)
-- [Python and Go](#python-and-go)
-- [Development](#development)
-- [Limitations](#limitations)
-- [Default topic: aging clocks](#default-topic-aging-clocks)
+- [Install](https://github.com/bhagesh-h/sourcelens#install)
+- [Quick start](https://github.com/bhagesh-h/sourcelens#quick-start)
+- [How a topic becomes a search](https://github.com/bhagesh-h/sourcelens#how-a-topic-becomes-a-search)
+- [Commands](https://github.com/bhagesh-h/sourcelens#commands)
+- [Where the results go](https://github.com/bhagesh-h/sourcelens#where-the-results-go)
+- [Settings](https://github.com/bhagesh-h/sourcelens#settings)
+- [Configuration of a catalogue](https://github.com/bhagesh-h/sourcelens#configuration-of-a-catalogue)
+- [Sources](https://github.com/bhagesh-h/sourcelens#sources)
+- [Python and Go](https://github.com/bhagesh-h/sourcelens#python-and-go)
+- [Development](https://github.com/bhagesh-h/sourcelens#development)
+- [Limitations](https://github.com/bhagesh-h/sourcelens#limitations)
+- [Default topic: aging clocks](https://github.com/bhagesh-h/sourcelens#default-topic-aging-clocks)
 
 ## Install
 
-litsearch runs on Linux and macOS. There are two implementations of the same
+sourcelens runs on Linux and macOS. There are two implementations of the same
 command. Install one of them.
 
 **Python** (3.10 or newer):
 
 ```bash
-pip install litsearch            # or: pipx install litsearch
-pip install "litsearch[pdf]"     # adds PyMuPDF for better PDF to Markdown conversion
+pip install sourcelens            # or: pipx install sourcelens
+pip install "sourcelens[pdf]"     # adds PyMuPDF for better PDF to Markdown conversion
 ```
 
 **Go** (a single static binary, about 8 MB):
 
 ```bash
-go install github.com/bhagesh-h/litSearch/cmd/litsearch@latest
+go install github.com/bhagesh-h/sourcelens/cmd/sourcelens@latest
 ```
 
 Prebuilt binaries for Linux and macOS are attached to each
-[release](https://github.com/bhagesh-h/litSearch/releases).
+[release](https://github.com/bhagesh-h/sourcelens/releases).
 
 **Docker:**
 
 ```bash
-docker build -t litsearch https://github.com/bhagesh-h/litSearch.git
-docker run --rm -v "$HOME/litsearch:/data" litsearch "CRISPR base editing"
+docker build -t sourcelens https://github.com/bhagesh-h/sourcelens.git
+docker run --rm -v "$HOME/sourcelens:/data" sourcelens "CRISPR base editing"
 ```
 
 Optional:
@@ -65,28 +65,28 @@ Optional:
 - `poppler-utils` (`apt install poppler-utils`, `brew install poppler`)
   converts PDFs to text and Markdown. The Go binary needs it for that; the
   Python package uses it when PyMuPDF is not installed.
-- `gh`, the GitHub CLI: when it is logged in, litsearch uses its token for
+- `gh`, the GitHub CLI: when it is logged in, sourcelens uses its token for
   faster GitHub searches.
 
 ## Quick start
 
-1. Tell litsearch your email address. Crossref, OpenAlex and NCBI ask for one
+1. Tell sourcelens your email address. Crossref, OpenAlex and NCBI ask for one
    from automated clients, and Unpaywall needs it to find open-access PDFs.
 
    ```bash
-   litsearch config set contact_email you@example.org
+   sourcelens config set contact_email you@example.org
    ```
 
-2. Choose where catalogues are stored. The default is `~/litsearch`.
+2. Choose where catalogues are stored. The default is `~/sourcelens`.
 
    ```bash
-   litsearch config set output ~/Documents/research
+   sourcelens config set output ~/Documents/research
    ```
 
 3. Start a catalogue:
 
    ```bash
-   litsearch "CRISPR base editing"
+   sourcelens "CRISPR base editing"
    ```
 
    This searches all sources for work published in the last 12 months. It
@@ -100,32 +100,32 @@ Optional:
 4. Later, fetch what has been published since:
 
    ```bash
-   litsearch "CRISPR base editing"
+   sourcelens "CRISPR base editing"
    ```
 
 5. Look at the results, or export them:
 
    ```bash
-   litsearch query --topic "CRISPR base editing" --range 1m
-   litsearch export --topic "CRISPR base editing" --format BIB --out crispr.bib
+   sourcelens query --topic "CRISPR base editing" --range 1m
+   sourcelens export --topic "CRISPR base editing" --format BIB --out crispr.bib
    ```
 
 Faster, smaller first runs:
 
 ```bash
-litsearch "CRISPR base editing" --types papers           # metadata only, no downloads
-litsearch "CRISPR base editing" --range 1m               # only the last month
-litsearch "CRISPR base editing" --dry-run                # show what would run
+sourcelens "CRISPR base editing" --types papers           # metadata only, no downloads
+sourcelens "CRISPR base editing" --range 1m               # only the last month
+sourcelens "CRISPR base editing" --dry-run                # show what would run
 ```
 
 ## How a topic becomes a search
 
-| you type | litsearch searches for |
+| you type | sourcelens searches for |
 |---|---|
-| `litsearch "CRISPR base editing"` | titles or abstracts containing CRISPR, base and editing |
-| `litsearch '"base editing"'` | the exact phrase "base editing" |
-| `litsearch '"base editing", "prime editing"'` | either phrase |
-| `litsearch "graph neural networks OR GNN"` | all three words, or GNN |
+| `sourcelens "CRISPR base editing"` | titles or abstracts containing CRISPR, base and editing |
+| `sourcelens '"base editing"'` | the exact phrase "base editing" |
+| `sourcelens '"base editing", "prime editing"'` | either phrase |
+| `sourcelens "graph neural networks OR GNN"` | all three words, or GNN |
 
 Rules:
 
@@ -135,7 +135,7 @@ Rules:
 
 The terms are written to the catalogue's configuration file. Edit that file
 to refine the search, for example to add synonyms or a second required term
-(see [Configuration](#configuration-of-a-catalogue)).
+(see [Configuration](https://github.com/bhagesh-h/sourcelens#configuration-of-a-catalogue)).
 
 The time window:
 
@@ -149,7 +149,7 @@ The time window:
 
 | command | what it does |
 |---|---|
-| `litsearch "TOPIC"` | same as `litsearch update --topic "TOPIC"` |
+| `sourcelens "TOPIC"` | same as `sourcelens update --topic "TOPIC"` |
 | `update` | search, download and rebuild a catalogue (the default topic when no `--topic` is given) |
 | `retry` | download again the full texts that were rate-limited, incomplete or failed |
 | `query` | filter a catalogue; print the rows or save them as CSV |
@@ -161,7 +161,7 @@ The time window:
 | `test` | check, on a throwaway catalogue, that updates only ever add |
 | `version` | print the version |
 
-`litsearch help COMMAND` or `litsearch COMMAND --help` lists every option of a
+`sourcelens help COMMAND` or `sourcelens COMMAND --help` lists every option of a
 command.
 
 ### Choosing a catalogue
@@ -210,11 +210,11 @@ The steps of an update run in stages:
 Filters combine with AND. A comma list within one filter combines with OR.
 
 ```bash
-litsearch query --range 1m                                     # published in the last month
-litsearch query --type review --sort cited_by --limit 20       # most-cited reviews
-litsearch query --title "base editor" --from 2024
-litsearch query --fulltext "off-target" --type article         # search inside the downloaded full texts
-litsearch query --added-since 2026-10-01 --out new.csv         # what the last runs added
+sourcelens query --range 1m                                     # published in the last month
+sourcelens query --type review --sort cited_by --limit 20       # most-cited reviews
+sourcelens query --title "base editor" --from 2024
+sourcelens query --fulltext "off-target" --type article         # search inside the downloaded full texts
+sourcelens query --added-since 2026-10-01 --out new.csv         # what the last runs added
 ```
 
 | filter | matches |
@@ -247,9 +247,9 @@ three-letter codes:
 | `VAN` | Vancouver | `CSL` | CSL-JSON (Zotero, pandoc) |
 
 ```bash
-litsearch export --topic "CRISPR base editing" --type review --format APA
-litsearch export --doi 10.1038/s41586-019-1711-4 --format BIB,RIS --out anzalone
-litsearch export --from 2025 --tier core --format CSL --out core2025.json
+sourcelens export --topic "CRISPR base editing" --type review --format APA
+sourcelens export --doi 10.1038/s41586-019-1711-4 --format BIB,RIS --out anzalone
+sourcelens export --from 2025 --tier core --format CSL --out core2025.json
 ```
 
 `--out name.ext` writes one format to that file. `--out name` writes one file
@@ -263,7 +263,7 @@ Every catalogue is a folder:
 ```
 <catalogue>/
   progress.csv               the catalogue, oldest first
-  config/litsearch.yaml      its configuration (edit freely)
+  config/sourcelens.yaml      its configuration (edit freely)
   fulltext/<year>/<id>/      paper.pdf, paper.md, paper.txt, paper.jats.xml, metadata.json
   fulltext/fulltext_index.csv
   corpus/                    every harvested record with abstract (records.jsonl.gz),
@@ -297,7 +297,7 @@ One row per resource, sorted by date.
 | `details`, `matched_groups`, `found_by`, `local_refs` | repository stars and languages; which searches found the row; which reference folder mentions it |
 | `status` | empty, `undated`, or `no longer matched by pipeline (kept)` |
 | `uid` | stable key: `doi:...`, `pmid:...`, `pmcid:...`, `epmc:...` or `url:...` |
-| `notes`, `user_tags` | yours; litsearch never changes them |
+| `notes`, `user_tags` | yours; sourcelens never changes them |
 
 ### Updates only add
 
@@ -309,36 +309,36 @@ One row per resource, sorted by date.
   downloads are retried on the next run; papers without an open copy are
   retried after 30 days.
 - Only one update runs on a catalogue at a time (`.pipeline.lock`).
-- `litsearch test` checks these rules on a throwaway catalogue.
+- `sourcelens test` checks these rules on a throwaway catalogue.
 
 ## Settings
 
 Settings belong to the machine, not to a catalogue:
 
 ```bash
-litsearch config                                   # show them (keys are masked)
-litsearch config set output ~/research             # where catalogues are stored
-litsearch config set contact_email you@example.org
-litsearch config set ncbi_api_key KEY              # optional: faster PubMed
-litsearch config set github_token TOKEN            # optional: or log in with the gh CLI
-litsearch config unset github_token
+sourcelens config                                   # show them (keys are masked)
+sourcelens config set output ~/research             # where catalogues are stored
+sourcelens config set contact_email you@example.org
+sourcelens config set ncbi_api_key KEY              # optional: faster PubMed
+sourcelens config set github_token TOKEN            # optional: or log in with the gh CLI
+sourcelens config unset github_token
 ```
 
 | setting | environment variable | used for |
 |---|---|---|
-| `output` | `LITSEARCH_OUTPUT` | folder that holds the catalogues (default `~/litsearch`) |
-| `contact_email` | `LITSEARCH_EMAIL` | polite access to Crossref, OpenAlex and NCBI; required for Unpaywall |
+| `output` | `SOURCELENS_OUTPUT` | folder that holds the catalogues (default `~/sourcelens`) |
+| `contact_email` | `SOURCELENS_EMAIL` | polite access to Crossref, OpenAlex and NCBI; required for Unpaywall |
 | `github_token` | `GITHUB_TOKEN` | GitHub search rate limit |
 | `openalex_api_key` | `OPENALEX_API_KEY` | OpenAlex premium access |
 | `ncbi_api_key` | `NCBI_API_KEY` | PubMed rate limit |
 
-The settings file is `~/.config/litsearch/settings.yaml` on Linux and
-`~/Library/Application Support/litsearch/settings.yaml` on macOS. It is
+The settings file is `~/.config/sourcelens/settings.yaml` on Linux and
+`~/Library/Application Support/sourcelens/settings.yaml` on macOS. It is
 readable by you only. Environment variables override it.
 
 ## Configuration of a catalogue
 
-Each catalogue has its own `config/litsearch.yaml`, created on its first
+Each catalogue has its own `config/sourcelens.yaml`, created on its first
 update. It has four sections:
 
 | section | sets |
@@ -348,7 +348,7 @@ update. It has four sections:
 | `repos` | GitHub searches, a relevance pattern for repositories, package searches |
 | `websites` | curated websites and a relevance pattern for sites cited by papers |
 
-Top-level keys name the topic and list local reference folders. litsearch
+Top-level keys name the topic and list local reference folders. sourcelens
 mines those folders for DOIs and links; the papers they cite become seeds of
 the catalogue.
 
@@ -362,7 +362,7 @@ Add your own:
 - `modality`: data types to track;
 - `websites.sites`: websites to include.
 
-Every key is described in [docs/configuration.md](docs/configuration.md).
+Every key is described in [docs/configuration.md](https://github.com/bhagesh-h/sourcelens/blob/main/docs/configuration.md).
 
 ## Sources
 
@@ -379,14 +379,14 @@ Every key is described in [docs/configuration.md](docs/configuration.md).
 | GitHub, CRAN, Bioconductor, PyPI, Zenodo | repositories and packages |
 | Internet Archive | first-seen dates of websites |
 
-OpenAlex matches word stems, so litsearch keeps an OpenAlex result only when
+OpenAlex matches word stems, so sourcelens keeps an OpenAlex result only when
 the topic words appear as whole words in its title or abstract. It also skips
 further versions of a work already in the catalogue: the same title, venue
 and year under another DOI, as with Zenodo and figshare versions.
 
 Only open-access copies are downloaded. Requests are spaced per host and
 retried with back-off. bioRxiv and medRxiv rate limits mark downloads as
-deferred instead of waiting; `litsearch retry` picks them up later.
+deferred instead of waiting; `sourcelens retry` picks them up later.
 
 ## Python and Go
 
@@ -396,15 +396,15 @@ always run their own steps; they share no code.
 
 | | Python | Go |
 |---|---|---|
-| install | `pip install litsearch` | `go install` or a release binary |
-| source | `src/litsearch/` | `cmd/litsearch/` |
+| install | `pip install sourcelens` | `go install` or a release binary |
+| source | `src/sourcelens/` | `cmd/sourcelens/` |
 | PDF conversion | PyMuPDF if installed, else poppler | poppler |
 
 Known differences:
 
 - Markdown made from PDFs differs in detail between PyMuPDF and poppler.
 - Some publisher sites (for example nature.com) answer Go's HTTP client with a
-  bot check instead of the PDF. litsearch does not try to get past such
+  bot check instead of the PDF. sourcelens does not try to get past such
   checks.
 - The keys inside `corpus/records.jsonl.gz` may be in a different order. Both
   read either file.
@@ -414,10 +414,10 @@ Both implementations can work on the same catalogue, one after the other.
 ## Development
 
 ```bash
-git clone https://github.com/bhagesh-h/litSearch.git && cd litSearch
+git clone https://github.com/bhagesh-h/sourcelens.git && cd sourcelens
 make python        # pip install -e ".[dev]"
-make go            # bin/litsearch
-make test          # go vet, go test, pytest, and litsearch test for both
+make go            # bin/sourcelens
+make test          # go vet, go test, pytest, and sourcelens test for both
 make parity        # run parity/cases.txt through both and compare every output
 ```
 
@@ -430,15 +430,15 @@ make parity        # run parity/cases.txt through both and compare every output
 It then compares stdout, stderr, exit codes and every file written. A change
 to one implementation is finished when the parity check passes.
 
-Releasing: push a tag such as `v1.0.1` and the release workflow does two
-things:
+Releasing: set the version in `src/sourcelens/__init__.py` and
+`cmd/sourcelens/main.go`, then push a tag such as `v1.0.1`. Two workflows run:
 
-- it attaches Go binaries for Linux and macOS to a GitHub release;
-- it publishes the Python package to PyPI.
+- `publish` uploads the Python package to PyPI;
+- `release` attaches the Go binaries for Linux and macOS to a GitHub release.
 
-PyPI publishing uses trusted publishing. Register the repository on pypi.org
-once before the first release. The version lives in
-`src/litsearch/__init__.py`; the Go build reads it from there.
+[publish.md](https://github.com/bhagesh-h/sourcelens/blob/main/publish.md)
+has the one-time PyPI setup and the release steps, including a trial upload to
+TestPyPI.
 
 ## Limitations
 
@@ -457,8 +457,8 @@ once before the first release. The version lives in
 
 ## Default topic: aging clocks
 
-litsearch was built to follow research on measuring biological aging. That
-catalogue is the default topic: `litsearch update` without `--topic` builds
+sourcelens was built to follow research on measuring biological aging. That
+catalogue is the default topic: `sourcelens update` without `--topic` builds
 it.
 
 The default topic covers:
@@ -506,4 +506,4 @@ Findings, from its `summary/findings.md`:
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE).
+GPL-3.0. See [LICENSE](https://github.com/bhagesh-h/sourcelens/blob/main/LICENSE).

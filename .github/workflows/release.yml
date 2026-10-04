@@ -1,9 +1,8 @@
 name: release
 
-# Push a tag such as v1.0.0 to build the Go binaries, attach them to a GitHub
-# release, and publish the Python package to PyPI. PyPI publishing uses
-# trusted publishing: register this repository and workflow as a trusted
-# publisher of the "litsearch" project on pypi.org first.
+# Push a tag such as v1.0.0 to build the Go binaries for Linux and macOS and
+# attach them to a GitHub release. The Python package is published by
+# publish.yml from the same tag.
 
 on:
   push:
@@ -11,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   binaries:
@@ -24,15 +22,5 @@ jobs:
       - run: make release
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/litsearch_*
-
-  pypi:
-    runs-on: ubuntu-latest
-    environment: pypi
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install build && python -m build
-      - uses: pypa/gh-action-pypi-publish@release/v1
+          files: dist/sourcelens_*
+          generate_release_notes: true

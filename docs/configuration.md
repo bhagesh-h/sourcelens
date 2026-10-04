@@ -1,26 +1,26 @@
 # Configuration reference
 
-litsearch reads two kinds of files.
+sourcelens reads two kinds of files.
 
 | file | scope | holds |
 |---|---|---|
 | `settings.yaml` | this machine | default output folder, contact email, API keys |
-| `<catalogue>/config/litsearch.yaml` | one catalogue | topic, search terms, sources, classification rules, repository and website settings |
+| `<catalogue>/config/sourcelens.yaml` | one catalogue | topic, search terms, sources, classification rules, repository and website settings |
 
 ## Settings (per machine)
 
-Location: `~/.config/litsearch/settings.yaml` on Linux,
-`~/Library/Application Support/litsearch/settings.yaml` on macOS. Run
-`litsearch config path` to print it; set `LITSEARCH_SETTINGS` to use another file.
+Location: `~/.config/sourcelens/settings.yaml` on Linux,
+`~/Library/Application Support/sourcelens/settings.yaml` on macOS. Run
+`sourcelens config path` to print it; set `SOURCELENS_SETTINGS` to use another file.
 
-Change values with `litsearch config set KEY VALUE` and remove them with
-`litsearch config unset KEY`. `litsearch config` shows the current values,
+Change values with `sourcelens config set KEY VALUE` and remove them with
+`sourcelens config unset KEY`. `sourcelens config` shows the current values,
 with keys masked.
 
 | key | meaning | environment override |
 |---|---|---|
-| `output` | folder that holds the catalogues (default `~/litsearch`) | `LITSEARCH_OUTPUT` |
-| `contact_email` | sent to Crossref, OpenAlex and NCBI (polite pools); required by Unpaywall | `LITSEARCH_EMAIL` |
+| `output` | folder that holds the catalogues (default `~/sourcelens`) | `SOURCELENS_OUTPUT` |
+| `contact_email` | sent to Crossref, OpenAlex and NCBI (polite pools); required by Unpaywall | `SOURCELENS_EMAIL` |
 | `github_token` | raises the GitHub search rate limit; when empty, `gh auth token` is used if the GitHub CLI is logged in | `GITHUB_TOKEN` |
 | `openalex_api_key` | OpenAlex premium key | `OPENALEX_API_KEY` |
 | `ncbi_api_key` | faster PubMed requests | `NCBI_API_KEY` |
@@ -35,19 +35,19 @@ gets a subfolder named after it:
 
 ```
 <output>/                         default topic
-<output>/crispr-base-editing/     litsearch "CRISPR base editing"
-<output>/graph-neural-networks/   litsearch "graph neural networks"
+<output>/crispr-base-editing/     sourcelens "CRISPR base editing"
+<output>/graph-neural-networks/   sourcelens "graph neural networks"
 ```
 
-`--dir DIR` uses any other folder. `litsearch list` shows the catalogues in
+`--dir DIR` uses any other folder. `sourcelens list` shows the catalogues in
 the output folder.
 
 A catalogue's configuration is created on its first update:
 
 - from the topic you typed;
-- or, for the default topic, from the configuration built into litsearch.
+- or, for the default topic, from the configuration built into sourcelens.
 
-Edit `<catalogue>/config/litsearch.yaml` freely. The next update reads it
+Edit `<catalogue>/config/sourcelens.yaml` freely. The next update reads it
 again, and every run saves the copy it used in `logs/cli_<stamp>/`.
 
 ## The catalogue configuration
@@ -56,7 +56,7 @@ again, and every run saves the copy it used in `logs/cli_<stamp>/`.
 
 | key | meaning |
 |---|---|
-| `topic` | name of the catalogue; `litsearch --topic` and `litsearch list` use it |
+| `topic` | name of the catalogue; `sourcelens --topic` and `sourcelens list` use it |
 | `references` | local folders (absolute paths) mined for DOIs and links, for example your notes, a project, or a reading list |
 | `seeds` | how reference folders are read (optional, see below) |
 
@@ -110,7 +110,7 @@ Each group:
 A term is a phrase (`"base editing"`). Parts joined with `&` must all appear:
 `CRISPR & base editing` needs both "CRISPR" and "base editing".
 
-What you type after `litsearch` becomes terms as follows:
+What you type after `sourcelens` becomes terms as follows:
 
 | input | terms |
 |---|---|

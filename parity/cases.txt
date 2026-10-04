@@ -1,4 +1,4 @@
-# One litsearch command per line (shell quoting). parity/check.sh runs each
+# One sourcelens command per line (shell quoting). parity/check.sh runs each
 # through the Python and the Go implementation and compares stdout, stderr and
 # the exit code. {X} becomes py or go, {W} a scratch folder; output written
 # there or under <catalogue>/exports/parity_{X}/ is compared as well.

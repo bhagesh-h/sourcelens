@@ -1,12 +1,12 @@
 # todo
 
-Living list for litsearch. Done items stay listed with their date, so the
+Living list for sourcelens. Done items stay listed with their date, so the
 history of features is kept.
 
-litsearch is a general tool: the topic comes from the command line or the
+sourcelens is a general tool: the topic comes from the command line or the
 configuration. The aging-clock catalogue is the default topic. There are two
-implementations of the same command, Python (`src/litsearch/`, published on
-PyPI) and Go (`cmd/litsearch/`). Every feature goes into both, with the same
+implementations of the same command, Python (`src/sourcelens/`, published on
+PyPI) and Go (`cmd/sourcelens/`). Every feature goes into both, with the same
 flags and output, and `parity/check.sh` must pass.
 
 Legend: `[x]` done, `[ ]` open
@@ -28,20 +28,21 @@ Legend: `[x]` done, `[ ]` open
 - [x] Run lock shared by both implementations
 
 ### 1.0.0, 2026-10-04
-- [x] `litsearch "TOPIC"`: a catalogue for any topic from one line; commas, semicolons and OR separate alternatives, words are required, quotes keep phrases
-- [x] One catalogue per topic (`--topic`, `--dir`, `litsearch list`); the default topic in the output folder itself
+- [x] Renamed to sourcelens (PyPI name, command, Go module github.com/bhagesh-h/sourcelens); publish workflow and publish.md
+- [x] `sourcelens "TOPIC"`: a catalogue for any topic from one line; commas, semicolons and OR separate alternatives, words are required, quotes keep phrases
+- [x] One catalogue per topic (`--topic`, `--dir`, `sourcelens list`); the default topic in the output folder itself
 - [x] OpenAlex search (all fields of research), filtered locally to whole-word matches; OpenAlex open-access PDF links as a full-text source
 - [x] A new topic starts 12 months back; an earlier `--from` / `--range` extends the window
-- [x] Settings per machine (`litsearch config`): output folder, contact email, API keys; environment overrides; `gh auth token` fallback
+- [x] Settings per machine (`sourcelens config`): output folder, contact email, API keys; environment overrides; `gh auth token` fallback
 - [x] Topic-specific code moved into the configuration: reference folders, seed readers, origin and core categories, summary data layers, website relevance; `clocks` column renamed `entities`
-- [x] Native installs: `pip install litsearch` (PyMuPDF optional, poppler fallback) and `go install`; Docker optional
+- [x] Native installs: `pip install sourcelens` (PyMuPDF optional, poppler fallback) and `go install`; Docker optional
 - [x] Unit tests (Go and Python), CI and release workflows (Go binaries, PyPI trusted publishing), Makefile, Dockerfile
 - [x] README rewritten; `docs/configuration.md`; CHANGELOG
 - [x] Output folder for this machine kept at the Zotero folder (settings); the existing catalogue migrated to the 1.0 format
 
 ## Open
 
-- [ ] Register the PyPI project and the trusted publisher, then tag v1.0.0
+- [ ] Register the pending trusted publishers on PyPI and TestPyPI (publish.md), then tag v1.0.0
 - [ ] Go: PDF to Markdown closer to pymupdf4llm (headings, tables)
 - [ ] Ordered JSON for records in Go, so `records.jsonl.gz` is byte-identical between implementations (content already is)
 - [ ] Parity cases that run `update` and `retry` against network sources on a sandbox catalogue
