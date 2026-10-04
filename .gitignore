@@ -1,19 +1,27 @@
-# Local paths and credentials (templates: config/*.template.yaml)
-config/local.yaml
-*.local.yaml
+# Builds
+bin/
+dist/
+build/
+*.egg-info/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local settings and secrets never belong in the repository
 .env
 .env.*
+*.local.yaml
+settings.yaml
 
-# Outputs live in the output folder named in config/local.yaml; a stray
-# in-workspace output folder or export never belongs in the repository
+# Catalogues are written to the output folder (litsearch config), not here
 research/
 exports/
 
-# Build and tool caches
-__pycache__/
-*.pyc
-.cache/
-go/litSearch.bin
 *.tmp
 *.tmp.gz
 .DS_Store

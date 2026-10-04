@@ -1,84 +1,54 @@
-# todo — litSearch (Python and Go implementations)
+# todo
 
-This is the living feature list for `litSearch`. Done items stay listed with
-their date, so the feature history is kept. Nothing marked done may be removed.
+Living list for litsearch. Done items stay listed with their date, so the
+history of features is kept.
 
-litSearch is a general tool. The research topic comes from the configuration.
-The aging-clock catalogue is this workspace's use case, not a feature of the
-tool.
+litsearch is a general tool: the topic comes from the command line or the
+configuration. The aging-clock catalogue is the default topic. There are two
+implementations of the same command, Python (`src/litsearch/`, published on
+PyPI) and Go (`cmd/litsearch/`). Every feature goes into both, with the same
+flags and output, and `parity/check.sh` must pass.
 
-There are two independent implementations with **the same commands, flags
-("tags") and outputs**. Each has its own Dockerfile, and they share no
-scripts:
-
-- `python/`: Python implementation (`python/Dockerfile`, launcher `python/litSearch`)
-- `go/`: Go implementation (`go/Dockerfile`, launcher `go/litSearch`; `./litSearch` links here)
-- shared data only:
-  - `config/litsearch.template.yaml`
-  - `config/local.yaml` (git-ignored)
-  - the output folder named in `local.yaml`, holding the live
-    `config/litsearch.yaml`
-- `parity/`: runs both implementations and compares them; belongs to neither
-
-Legend: `[x]` done · `[~]` in progress · `[ ]` open
+Legend: `[x]` done, `[ ]` open
 
 ## Done
 
-### Pipeline (Python), 2026-09-29 … 2026-10-04
-- [x] Seeds from local reference projects; PubMed, Europe PMC, arXiv searches; seed resolution (PubMed → Europe PMC → Crossref → DataCite)
-- [x] Catalogue `progress.csv`: chronological and append-only. `added_on`, `notes` and `user_tags` are never overwritten. Changelog per run; rule-based classification.
-- [x] OpenAlex citations / dates; bioRxiv preprint → journal links
-- [x] Full texts: PMC S3 → bioRxiv → Europe PMC → arXiv → Unpaywall; md / txt / pdf / xml + metadata.json; resume from disk; deferral on 429
-- [x] Repositories (GitHub search + links in papers + CRAN / Bioconductor / PyPI / Zenodo), websites (curated + cited, archive dates)
-- [x] Findings summary, query tool, append-only contract test
-- [x] Outputs moved to the Zotero-synced output folder (logs in `logs/`) — 2026-10-04
+### Pipeline, 2026-09-29 to 2026-10-04
+- [x] Seeds from local reference folders; PubMed, Europe PMC and arXiv searches; seed resolution (PubMed, Europe PMC, Crossref, DataCite)
+- [x] `progress.csv`: chronological and append-only. `added_on`, `notes` and `user_tags` are never overwritten. Changelog per day; rule-based classification.
+- [x] OpenAlex citations and dates; bioRxiv preprint to journal links
+- [x] Full texts from PMC S3, bioRxiv, Europe PMC, arXiv and Unpaywall: md, txt, pdf, xml and metadata.json. Downloads resume from disk and are deferred on HTTP 429.
+- [x] Repositories (GitHub search, links in papers, CRAN, Bioconductor, PyPI, Zenodo); websites (curated and cited, with archive dates)
+- [x] Findings summary, query tool, append-only test
 
-### CLI v1 (Python, `agingcat`, 2026-10-04), now `litSearch`
-- [x] `update` in parallel stages; `--sources`, `--types`, `--range` (1d 7d 2w 1m 6m 1y 10y), `--from` / `--to`
-- [x] full-text `--formats` / `--sources`; repository `--sources` with carry-over
-- [x] `--dry-run`, `--parallel`, `--workers`, `--scope`, `--tiers`, `--min-stars`, `--stop-on-error`, `--heartbeat`
-- [x] per-step logs + plan.txt; `query`, `status`, `sources`, `test`
-- [x] locks on record store and search-hit log; arXiv batched + incremental; website / GitHub caches
-- [x] Renamed to `litSearch` (2026-10-04)
+### CLI, 2026-10-04
+- [x] `update` in parallel stages; `--sources`, `--types`, `--paper-types`, `--range` (1d 7d 2w 1m 6m 1y 10y), `--from` / `--to`, `--dry-run` with a full-text estimate
+- [x] `retry`, `status`, `sources`, `test`, `query`, `export` (APA AMA MLA CHI HAR VAN IEE NAT BIB RIS ENW CSL)
+- [x] Python and Go implementations with the same commands, flags and output; parity check
+- [x] Run lock shared by both implementations
 
-### litSearch 2.0: both implementations, 2026-10-04
-- [x] Python code in `python/`, with its own Dockerfile and launcher; output folder mounted at `/research`; catalogue paths relative to it
-- [x] run lock `.pipeline.lock` in the output folder, shared by both CLIs and `update_all.sh`
-- [x] `update --paper-types article,review,preprint,…` (full-text selection)
-- [x] `update --dry-run`: plan + full-text estimate
-- [x] `retry [--status] [--types] [--sources] [--workers] [--dry-run]`
-- [x] `status`: rows, types, tiers, full-text index, papers not yet tried, last builds, last CLI run with failures, running lock
-- [x] `query`: `--text --title --doi --uid --from --to --range --tier --type --category --modality --clock --species --added-since --has-fulltext --fulltext --sort --limit --out`
-- [x] `export`: same filters + `--format APA,AMA,MLA,CHI,HAR,VAN,IEE,NAT,BIB,RIS,ENW,CSL` (aliases), `--out` file or prefix
-- [x] `corpus/references.csv` (full authors, volume, issue, pages) written by the catalogue build
-- [x] one flag parser with the same rules and error messages in both (`python/common/flags.py`, `go/flags.go`); one date parser with the same errors
-- [x] Go port of every step, no Python involved: seeds, PubMed, Europe PMC, arXiv, seed resolution, catalogue + classification, OpenAlex, preprint links, full texts (JATS → md; PDF → txt / md via poppler), links, GitHub search, repositories / packages, websites, summary
-- [x] `go/Dockerfile` (multi-stage, static binary + poppler, ~60 MB); `go/run.sh` rebuilds the image when Go sources change; `./litSearch` → Go
-- [x] Go writes CSV byte-for-byte like Python's `csv` module, keeps Python's dict / JSON key order where files are compared, follows Python's Unicode `\s` and `.split()`, and decodes XML character references
-- [x] Python follows redirects with non-UTF-8 `Location` headers (as Go and browsers do); Go sends `Accept: */*` (as `requests`)
-- [x] Parity: `parity/check.sh` (56 CLI cases identical); step-by-step comparison on copies of the output folder gives identical outputs for seeds, catalogue, links, summary, repositories, websites, and PubMed / Europe PMC / arXiv (one-week window, incl. re-fetched records)
-
-### Configuration and local settings, 2026-10-04
-- [x] `config/local.yaml` (git-ignored) for paths and credentials; `config/local.template.yaml` placeholder; `.gitignore`
-- [x] launchers read `local.yaml`; credentials passed to containers by name only (not on the command line); `gh auth token` fallback
-- [x] contact email no longer hard-coded: optional; without it, no polite-pool address and Unpaywall skipped (logged)
-- [x] one configuration file with sections `search`, `classify`, `repos`, `websites` (was four files)
-- [x] live configuration kept in the output folder (`<research_dir>/config/litsearch.yaml`), seeded from `config/litsearch.template.yaml`; snapshot per run in `logs/cli_<stamp>/litsearch.yaml`
-- [x] topic-neutral tool wording (help, User-Agent `litSearch/2.0`); default start date from the configuration instead of a fixed 2011
-- [x] README rewritten: general tool first, aging clocks as the documented use case
+### 1.0.0, 2026-10-04
+- [x] `litsearch "TOPIC"`: a catalogue for any topic from one line; commas, semicolons and OR separate alternatives, words are required, quotes keep phrases
+- [x] One catalogue per topic (`--topic`, `--dir`, `litsearch list`); the default topic in the output folder itself
+- [x] OpenAlex search (all fields of research), filtered locally to whole-word matches; OpenAlex open-access PDF links as a full-text source
+- [x] A new topic starts 12 months back; an earlier `--from` / `--range` extends the window
+- [x] Settings per machine (`litsearch config`): output folder, contact email, API keys; environment overrides; `gh auth token` fallback
+- [x] Topic-specific code moved into the configuration: reference folders, seed readers, origin and core categories, summary data layers, website relevance; `clocks` column renamed `entities`
+- [x] Native installs: `pip install litsearch` (PyMuPDF optional, poppler fallback) and `go install`; Docker optional
+- [x] Unit tests (Go and Python), CI and release workflows (Go binaries, PyPI trusted publishing), Makefile, Dockerfile
+- [x] README rewritten; `docs/configuration.md`; CHANGELOG
+- [x] Output folder for this machine kept at the Zotero folder (settings); the existing catalogue migrated to the 1.0 format
 
 ## Open
 
-- [ ] Use-case code into the configuration:
-  - seed adapters for the FALCONAge registry / 300BCG manifests as configurable adapters;
-  - `clock development` for registry origin papers;
-  - the summary's data-layer list and "clock" headings
-- [ ] Go: PDF → Markdown quality closer to pymupdf4llm (headings, tables)
-- [ ] Parity cases for `retry` and `update` runs on a sandbox output folder (not just `--dry-run`)
-- [ ] Ordered JSON for records in Go, so `records.jsonl.gz` is byte-identical too (content already equal)
+- [ ] Register the PyPI project and the trusted publisher, then tag v1.0.0
+- [ ] Go: PDF to Markdown closer to pymupdf4llm (headings, tables)
+- [ ] Ordered JSON for records in Go, so `records.jsonl.gz` is byte-identical between implementations (content already is)
+- [ ] Parity cases that run `update` and `retry` against network sources on a sandbox catalogue
+- [ ] Windows support (file locks use flock)
 
-## Backlog / ideas
+## Ideas
 
-- [ ] Shell completion (bash/zsh)
+- [ ] Shell completion (bash, zsh)
+- [ ] Proximity search for multi-word topics where a source supports it (PubMed `[tiab:~N]`)
 - [ ] Websites: archive-date lookups in parallel
-- [ ] Go: faster link mining (currently ~1.5× Python on 16k full texts)

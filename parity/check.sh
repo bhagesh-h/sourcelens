@@ -1,29 +1,33 @@
 #!/usr/bin/env bash
-# Parity check between the two litSearch implementations.
+# Parity check between the Python and the Go implementation of litsearch.
 #
-#   parity/check.sh            run every case in parity/cases.txt
-#   parity/check.sh -k export  only cases containing "export"
+#   parity/check.sh             every case in parity/cases.txt
+#   parity/check.sh -k export   only cases containing "export"
 #
-# Each case runs through python/litSearch and go/litSearch; stdout, stderr and
-# the exit code must be identical, apart from the implementation name in the
-# version line and the {X} placeholder (py / go) in output paths. Files written
-# under <output folder>/exports/parity_{X}/ are compared as well and removed.
-# This script belongs to neither implementation and shares no code with them.
+# LITSEARCH_PY and LITSEARCH_GO name the two commands (defaults: litsearch
+# from the active Python environment, and bin/litsearch built with `make go`).
+# Each case runs through both; stdout, stderr and the exit code must match,
+# apart from the implementation name, timestamps, durations and the {X}
+# placeholder (py / go) in paths. Files written under {W}/ and under
+# <catalogue>/exports/parity_{X}/ are compared too and removed afterwards.
 set -uo pipefail
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+PY="${LITSEARCH_PY:-$(command -v litsearch || echo "python3 -m litsearch")}"
+GO="${LITSEARCH_GO:-$ROOT/bin/litsearch}"
 FILTER=""
 [[ "${1:-}" == "-k" ]] && FILTER="${2:-}"
-RESEARCH="${LITSEARCH_RESEARCH:-$(sed -n 's/^research_dir:[[:space:]]*//p' "$ROOT/config/local.yaml" | head -1 | sed -e 's/[[:space:]]#.*$//' -e 's/^"\(.*\)"$/\1/')}"
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+W="$(mktemp -d)"
+trap 'rm -rf "$W"' EXIT
+OUT_BASE="$($GO config | sed -n 's/^output folder *//p')"
 
-# build both images up front so build chatter never lands in a case's output
-"$ROOT/python/run.sh" true >/dev/null 2>&1 || "$ROOT/python/run.sh" build
-"$ROOT/go/run.sh" true >/dev/null 2>&1 || "$ROOT/go/run.sh" build
-
-norm() { sed -e 's/litSearch 2\.0 (python)/litSearch 2.0 (IMPL)/; s/litSearch 2\.0 (go)/litSearch 2.0 (IMPL)/' \
-             -e 's#parity_py/#parity_X/#g; s#parity_go/#parity_X/#g'; }
+norm() {
+  sed -E -e 's/litsearch ([0-9.]+) \((python|go)\)/litsearch \1 (IMPL)/' \
+         -e 's#parity_(py|go)/#parity_X/#g; s#proj_(py|go)#proj_X#g' \
+         -e "s#$W#{W}#g" \
+         -e '/^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]/d' \
+         -e 's/[0-9]+\.[0-9] min/N.N min/g'
+}
 
 pass=0; fail=0; n=0
 while IFS= read -r line; do
@@ -32,30 +36,33 @@ while IFS= read -r line; do
   n=$((n + 1))
   for impl in py go; do
     cmd="${line//\{X\}/$impl}"
-    launcher="$ROOT/python/litSearch"; [[ $impl == go ]] && launcher="$ROOT/go/litSearch"
+    cmd="${cmd//\{W\}/$W}"
+    exe="$PY"; [[ $impl == go ]] && exe="$GO"
     eval "set -- $cmd"
-    "$launcher" "$@" </dev/null >"$WORK/$n.$impl.out" 2>"$WORK/$n.$impl.err"
-    echo "rc=$?" >>"$WORK/$n.$impl.out"
-    norm <"$WORK/$n.$impl.out" >"$WORK/$n.$impl.out.n"
-    # step logs (timestamps) are not part of the comparison
-    grep -v '^\[[0-9][0-9]:[0-9][0-9]:[0-9][0-9]\]' "$WORK/$n.$impl.err" | norm >"$WORK/$n.$impl.err.n"
+    $exe "$@" </dev/null >"$W/$n.$impl.out" 2>"$W/$n.$impl.err"
+    echo "rc=$?" >>"$W/$n.$impl.out"
+    norm <"$W/$n.$impl.out" >"$W/$n.$impl.out.n"
+    norm <"$W/$n.$impl.err" >"$W/$n.$impl.err.n"
   done
-  if cmp -s "$WORK/$n.py.out.n" "$WORK/$n.go.out.n" && cmp -s "$WORK/$n.py.err.n" "$WORK/$n.go.err.n"; then
+  if cmp -s "$W/$n.py.out.n" "$W/$n.go.out.n" && cmp -s "$W/$n.py.err.n" "$W/$n.go.err.n"; then
     pass=$((pass + 1)); printf 'same  %s\n' "$line"
   else
     fail=$((fail + 1)); printf 'DIFF  %s\n' "$line"
-    diff "$WORK/$n.py.out.n" "$WORK/$n.go.out.n" | head -20 | sed 's/^/      /'
-    diff "$WORK/$n.py.err.n" "$WORK/$n.go.err.n" | head -10 | sed 's/^/      /'
+    diff "$W/$n.py.out.n" "$W/$n.go.out.n" | head -20 | sed 's/^/      /'
+    diff "$W/$n.py.err.n" "$W/$n.go.err.n" | head -10 | sed 's/^/      /'
   fi
 done <"$HERE/cases.txt"
 
-if [[ -d "$RESEARCH/exports/parity_py" || -d "$RESEARCH/exports/parity_go" ]]; then
-  if diff -r "$RESEARCH/exports/parity_py" "$RESEARCH/exports/parity_go" >"$WORK/files.diff"; then
-    pass=$((pass + 1)); echo "same  files written under exports/parity_{X}/"
+compare_dirs() {  # $1 label, $2 py dir, $3 go dir
+  [[ -d "$2" || -d "$3" ]] || return 0
+  if diff -r -x logs -x runs.csv -x "*.lock" -x records.jsonl.gz "$2" "$3" >"$W/files.diff" 2>&1; then
+    pass=$((pass + 1)); echo "same  files: $1"
   else
-    fail=$((fail + 1)); echo "DIFF  files written under exports/parity_{X}/"; head -30 "$WORK/files.diff" | sed 's/^/      /'
+    fail=$((fail + 1)); echo "DIFF  files: $1"; head -30 "$W/files.diff" | sed 's/^/      /'
   fi
-  rm -rf "$RESEARCH/exports/parity_py" "$RESEARCH/exports/parity_go"
-fi
+}
+compare_dirs "exports/parity_{X}/" "$OUT_BASE/exports/parity_py" "$OUT_BASE/exports/parity_go"
+compare_dirs "{W}/proj_{X}/" "$W/proj_py" "$W/proj_go"
+rm -rf "$OUT_BASE/exports/parity_py" "$OUT_BASE/exports/parity_go"
 echo "parity: $pass same, $fail different"
 [[ $fail -eq 0 ]]

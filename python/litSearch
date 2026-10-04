@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-# litSearch, Python implementation: runs python/cli/litsearch.py in this
-# implementation's own container (python/Dockerfile via python/run.sh).
-#   python/litSearch update --range 1y --types papers,pdf
-#   python/litSearch export --doi 10.7554/elife.73420 --format APA,BIB
-set -euo pipefail
-HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-cd "$HERE/.."
-exec python/run.sh python python/cli/litsearch.py "$@"

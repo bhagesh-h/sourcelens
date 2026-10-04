@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-# litSearch, Go implementation: the litSearch binary in this implementation's
-# own container (go/Dockerfile via go/run.sh).
-#   go/litSearch update --range 1y --types papers,pdf
-#   go/litSearch export --doi 10.7554/elife.73420 --format APA,BIB
-set -euo pipefail
-HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-exec "$HERE/run.sh" litSearch "$@"
