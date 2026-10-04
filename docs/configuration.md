@@ -17,6 +17,15 @@ Change values with `sourcelens config set KEY VALUE` and remove them with
 `sourcelens config unset KEY`. `sourcelens config` shows the current values,
 with keys masked.
 
+```bash
+sourcelens config                                   # show them (keys are masked)
+sourcelens config set output ~/research             # where catalogues are stored
+sourcelens config set contact_email you@example.org
+sourcelens config set ncbi_api_key KEY              # optional: faster PubMed
+sourcelens config set github_token TOKEN            # optional: or log in with the gh CLI
+sourcelens config unset github_token
+```
+
 | key | meaning | environment override |
 |---|---|---|
 | `output` | folder that holds the catalogues (default `~/sourcelens`) | `SOURCELENS_OUTPUT` |
@@ -51,6 +60,23 @@ Edit `<catalogue>/config/sourcelens.yaml` freely. The next update reads it
 again, and every run saves the copy it used in `logs/cli_<stamp>/`.
 
 ## The catalogue configuration
+
+The file has four sections and a few top-level keys:
+
+| section | sets |
+|---|---|
+| `search` | time window, sources, search groups and their terms |
+| `classify` | rules that fill the `category`, `modality`, `entities`, `species` and `tier` columns |
+| `repos` | GitHub searches, a relevance pattern for repositories, package searches |
+| `websites` | curated websites and a relevance pattern for sites cited by papers |
+
+A configuration created from a topic searches all four literature sources.
+It has general classification rules: review, commentary, correction, method
+development, benchmark, software, trial. Add your own:
+
+- `entities`: names of methods, models or measures to tag;
+- `modality`: data types to track;
+- `websites.sites`: websites to include.
 
 ### Top level
 

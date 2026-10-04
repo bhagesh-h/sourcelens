@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sourcelens</title>
+<meta name="description" content="sourcelens collects the latest research on any topic into one chronological catalogue: papers, preprints, open-access full texts, code and references.">
+<meta property="og:title" content="sourcelens">
+<meta property="og:description" content="Collect the latest research on any topic into one catalogue.">
+<meta property="og:image" content="https://bhagesh-h.github.io/sourcelens/logo.png">
+<meta property="og:url" content="https://bhagesh-h.github.io/sourcelens/">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/Ubuntu.ttf" as="font" type="font/ttf" crossorigin>
+<style>
+  /* Ubuntu and Ubuntu Mono, unmodified, under the Ubuntu Font Licence (fonts/LICENCE.txt) */
+  @font-face {
+    font-family: "Ubuntu";
+    src: url("fonts/Ubuntu.ttf") format("truetype");
+    font-weight: 100 800;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Ubuntu Mono";
+    src: url("fonts/UbuntuMono.ttf") format("truetype");
+    font-weight: 400 700;
+    font-display: swap;
+  }
+
+  :root {
+    --bg: #e2e1dd;
+    --box: #d6d5d0;
+    --ink: #1f1f1d;
+    --ink-soft: #55554f;
+    --rule: rgba(31, 31, 29, .17);
+    --accent: #a8440a;
+    --grain-opacity: .3;
+    --grain-blend: multiply;
+    --sans: "Ubuntu", system-ui, sans-serif;
+    --mono: "Ubuntu Mono", ui-monospace, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #232321;
+      --box: #2e2e2b;
+      --ink: #e7e6e1;
+      --ink-soft: #a3a29b;
+      --rule: rgba(231, 230, 225, .15);
+      --accent: #f0904f;
+      --grain-opacity: .08;
+      --grain-blend: screen;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 17px/1.6 var(--sans);
+  }
+  /* paper grain over the whole page, the same everywhere */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: var(--grain-opacity);
+    mix-blend-mode: var(--grain-blend);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 16px 2rem;
+  }
+
+  a { color: var(--accent); text-underline-offset: .2em; text-decoration-thickness: 1px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  .masthead { display: flex; align-items: center; gap: 1.25rem; }
+  .masthead img { width: 76px; height: auto; flex: none; }
+  h1 { margin: 0; font-size: 2.4rem; line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
+  .tagline { margin: .3rem 0 0; color: var(--ink-soft); font-size: 1.1rem; }
+
+  .lede { margin: 1.75rem 0 1.5rem; }
+
+  .get { display: grid; gap: 1rem; margin: 0 0 1rem; }
+  .label { display: block; margin-bottom: .45rem; font-size: .8rem; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+  .buttons { display: flex; flex-wrap: wrap; gap: .55rem; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .55rem .95rem;
+    border: 1.5px solid var(--ink);
+    border-radius: 6px;
+    color: var(--ink);
+    font: 500 .97rem/1.2 var(--sans);
+    text-decoration: none;
+    transition: background .15s, color .15s;
+  }
+  .btn:hover { background: var(--ink); color: var(--bg); }
+  .btn small { font-weight: 400; opacity: .7; font-size: .85rem; }
+  .btn svg { width: 1rem; height: 1rem; flex: none; }
+  .btn.primary { background: var(--ink); color: var(--bg); }
+  .btn.primary:hover { background: transparent; color: var(--ink); }
+
+  h2 {
+    margin: 2.5rem 0 .9rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--rule);
+    font-size: .8rem;
+    font-weight: 500;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  p { margin: .6rem 0; }
+
+  code { font-family: var(--mono); font-size: 1.02em; }
+  :not(pre) > code { background: var(--box); padding: .05em .35em; border-radius: 4px; }
+
+  .code { position: relative; margin: .6rem 0; }
+  .code pre {
+    margin: 0;
+    padding: .8rem 4.5rem .8rem 1rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: var(--box);
+    border-radius: 6px;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .code .c { color: var(--ink-soft); }
+  .copy {
+    position: absolute;
+    top: .45rem;
+    right: .45rem;
+    padding: .2rem .55rem;
+    font: 400 .8rem/1.4 var(--mono);
+    color: var(--ink-soft);
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .copy:hover { color: var(--ink); border-color: var(--ink-soft); }
+  .note { font-size: .92rem; color: var(--ink-soft); }
+
+  dl { margin: .75rem 0; display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1.25rem; }
+  dt { font-family: var(--mono); font-size: 1rem; }
+  dd { margin: 0; }
+
+  .docs { display: flex; flex-wrap: wrap; gap: .4rem 1.4rem; padding: 0; margin: .5rem 0; list-style: none; }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: .75rem 2rem;
+    font-size: .92rem;
+    color: var(--ink-soft);
+  }
+  footer a { color: var(--ink-soft); }
+  footer a:hover { color: var(--ink); }
+  .connect { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem; }
+  .connect a { display: inline-flex; align-items: center; gap: .35rem; text-decoration: none; }
+  .connect a:hover { text-decoration: underline; }
+  .connect svg { width: 1rem; height: 1rem; fill: currentColor; }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .page { padding-top: 2.25rem; }
+    .masthead img { width: 60px; }
+    h1 { font-size: 2rem; }
+    .buttons .btn { flex: 1 1 calc(50% - .55rem); justify-content: center; }
+    dl { grid-template-columns: 1fr; gap: 0; }
+    dd { margin-bottom: .55rem; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header class="masthead">
+    <img src="logo.png" alt="sourcelens logo: an owl on a stump in an orange hexagon" width="240" height="271">
+    <div>
+      <h1>sourcelens</h1>
+      <p class="tagline">The latest research on any topic, in one catalogue.</p>
+    </div>
+  </header>
+
+  <p class="lede">Give it a topic. It searches PubMed, Europe PMC, arXiv and OpenAlex,
+  downloads the open-access full texts, finds the code the papers link to, and
+  keeps everything in one table, oldest first. Run it again later and it adds
+  only what is new.</p>
+
+  <div class="get">
+    <div>
+      <span class="label">Python package</span>
+      <div class="buttons">
+        <a class="btn primary" href="https://pypi.org/project/sourcelens/">sourcelens on PyPI <span aria-hidden="true">&#8599;</span></a>
+      </div>
+    </div>
+    <div>
+      <span class="label">Go binary, one file</span>
+      <div class="buttons">
+        <a class="btn" data-asset="linux_amd64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_linux_amd64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Linux <small>x86-64</small></a>
+        <a class="btn" data-asset="linux_arm64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_linux_arm64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Linux <small>ARM64</small></a>
+        <a class="btn" data-asset="darwin_arm64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_darwin_arm64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>macOS <small>Apple silicon</small></a>
+        <a class="btn" data-asset="darwin_amd64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_darwin_amd64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>macOS <small>Intel</small></a>
+      </div>
+    </div>
+  </div>
+
+  <h2 id="install">Install</h2>
+
+  <div class="code"><pre><code>pip install sourcelens</code></pre></div>
+  <p>or the Go binary (Linux x86-64; for another system use the address of its button):</p>
+  <div class="code"><pre><code>curl -fLo sourcelens <span data-asset-text="linux_amd64">https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_linux_amd64</span>
+chmod +x sourcelens &amp;&amp; mv sourcelens ~/.local/bin/</code></pre></div>
+  <p>or with Go:</p>
+  <div class="code"><pre><code>go install github.com/bhagesh-h/sourcelens/cmd/sourcelens@latest</code></pre></div>
+  <p class="note">Python 3.10 or newer. The binaries are not signed: if macOS blocks
+  one downloaded in a browser, run <code>xattr -d com.apple.quarantine sourcelens</code>.</p>
+
+  <h2 id="use">Use</h2>
+
+  <div class="code"><pre><code><span class="c"># once: the literature services ask for a contact address</span>
+sourcelens config set contact_email you@example.org
+
+<span class="c"># start a catalogue; the same command later adds what is new</span>
+sourcelens "CRISPR base editing"
+
+<span class="c"># the last month, or references for Zotero and LaTeX</span>
+sourcelens query --topic "CRISPR base editing" --range 1m
+sourcelens export --topic "CRISPR base editing" --format BIB --out crispr.bib</code></pre></div>
+
+  <p>Commas and <code>OR</code> separate alternatives, every word of an alternative
+  is required, and quotes keep a phrase: <code>sourcelens '"base editing", "prime editing"'</code>.</p>
+
+  <dl>
+    <dt>--range 1m, --from 2024</dt><dd>how far back to search (a new topic starts 12 months back)</dd>
+    <dt>--types papers</dt><dd>metadata only, no downloads</dd>
+    <dt>--sources pubmed,arxiv</dt><dd>only these sources</dd>
+    <dt>--dry-run</dt><dd>print the plan and run nothing</dd>
+  </dl>
+
+  <p>Each topic gets a folder under <code>~/sourcelens</code> with
+  <code>progress.csv</code> (one row per paper, preprint, repository or website),
+  the full texts, and the exports.</p>
+
+  <h2 id="docs">Documentation</h2>
+  <ul class="docs">
+    <li><a href="https://github.com/bhagesh-h/sourcelens/blob/main/docs/usage.md">Commands</a></li>
+    <li><a href="https://github.com/bhagesh-h/sourcelens/blob/main/docs/outputs.md">Outputs</a></li>
+    <li><a href="https://github.com/bhagesh-h/sourcelens/blob/main/docs/configuration.md">Configuration</a></li>
+    <li><a href="https://github.com/bhagesh-h/sourcelens/blob/main/docs/install.md">Install options</a></li>
+    <li><a href="https://github.com/bhagesh-h/sourcelens/blob/main/docs/sources.md">Sources</a></li>
+    <li><a href="https://github.com/bhagesh-h/sourcelens/blob/main/CHANGELOG.md">Changelog</a></li>
+  </ul>
+
+  <footer>
+    <div>sourcelens<span id="version"></span> &middot; GPL-3.0 &middot; <a href="https://github.com/bhagesh-h/sourcelens">source</a></div>
+    <div class="connect">
+      <span>Bhagesh Hunakunti</span>
+      <a href="https://github.com/bhagesh-h"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
+      <a href="https://www.linkedin.com/in/bhagesh-hunakunti"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"/></svg>LinkedIn</a>
+    </div>
+  </footer>
+
+</main>
+<script>
+  // Copy buttons on every command block.
+  document.querySelectorAll(".code").forEach(function (box) {
+    var code = box.querySelector("code");
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy";
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", "Copy command");
+    function done() {
+      button.textContent = "Copied";
+      setTimeout(function () { button.textContent = "Copy"; }, 1500);
+    }
+    function fallback() {
+      var range = document.createRange();
+      range.selectNodeContents(code);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      try { document.execCommand("copy"); done(); } catch (e) { /* the text stays selected */ }
+    }
+    button.addEventListener("click", function () {
+      var text = code.innerText.replace(/\s+$/, "");
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
+    });
+    box.appendChild(button);
+  });
+
+  // Point the download links at the files of the latest release and show its version.
+  fetch("https://api.github.com/repos/bhagesh-h/sourcelens/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (release) {
+      if (!release) return;
+      document.getElementById("version").textContent = " " + release.tag_name;
+      var urls = {};
+      (release.assets || []).forEach(function (asset) {
+        var m = asset.name.match(/_(linux|darwin)_(amd64|arm64)$/);
+        if (!m) return;
+        var key = m[1] + "_" + m[2];
+        var stable = /^sourcelens_[a-z]+_[a-z0-9]+$/.test(asset.name);
+        if (!urls[key] || stable) urls[key] = asset.browser_download_url;
+      });
+      Object.keys(urls).forEach(function (key) {
+        document.querySelectorAll('[data-asset="' + key + '"]').forEach(function (a) { a.href = urls[key]; });
+        document.querySelectorAll('[data-asset-text="' + key + '"]').forEach(function (s) { s.textContent = urls[key]; });
+      });
+    })
+    .catch(function () { /* keep the static links */ });
+</script>
+</body>
+</html>

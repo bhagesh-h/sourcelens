@@ -42,8 +42,9 @@ dev = ["pytest>=7", "ruff>=0.5", "build>=1.0", "twine>=5.0"]
 sourcelens = "sourcelens.cli.main:entry"
 
 [project.urls]
-Homepage = "https://github.com/bhagesh-h/sourcelens"
-Documentation = "https://github.com/bhagesh-h/sourcelens#readme"
+Homepage = "https://bhagesh-h.github.io/sourcelens/"
+Source = "https://github.com/bhagesh-h/sourcelens"
+Documentation = "https://github.com/bhagesh-h/sourcelens/tree/main/docs"
 Issues = "https://github.com/bhagesh-h/sourcelens/issues"
 Changelog = "https://github.com/bhagesh-h/sourcelens/blob/main/CHANGELOG.md"
 

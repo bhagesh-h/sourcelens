@@ -4,7 +4,7 @@
 #   make python      install the Python package in editable mode (needs Python 3.10+)
 #   make test        unit tests of both, plus the append-only check
 #   make parity      compare the two implementations (needs both installed)
-#   make release     Go binaries for Linux and macOS in dist/
+#   make release     Go binaries for Linux and macOS in dist/ (sourcelens_<os>_<arch>)
 #   make dist        Python wheel and sdist in dist/, checked with twine (see publish.md)
 #   make docker      container image
 
@@ -39,7 +39,7 @@ release:
 	for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
 		os=$${target%/*}; arch=$${target#*/}; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags="$(LDFLAGS)" \
-			-o dist/sourcelens_$(VERSION)_$${os}_$${arch} ./cmd/sourcelens; \
+			-o dist/sourcelens_$${os}_$${arch} ./cmd/sourcelens; \
 	done
 
 dist:

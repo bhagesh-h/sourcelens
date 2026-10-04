@@ -9,6 +9,19 @@ All notable changes to sourcelens. Versions follow semantic versioning.
 - `publish/publish.sh`: the local release commands (build and check, install
   tests from TestPyPI and PyPI, manual upload) run in a Docker container, so
   nothing is installed on the machine that releases.
+- Project website (`site/index.html`), published to GitHub Pages by
+  `.github/workflows/pages.yml`: install buttons for PyPI and the Go
+  binaries, the basic commands, links to the documentation.
+
+### Changed
+
+- The README covers only installing and basic use. Everything else moved to
+  `docs/`: install options, usage, outputs, configuration, sources and
+  limitations, development, and the default topic.
+- Release binaries are named `sourcelens_<os>_<arch>`, without the version,
+  so links to `releases/latest/download/` stay valid across releases.
+- Logo: the black rim around the hexagon removed and the image cropped to it.
+- PyPI project links point to the website, the source and `docs/`.
 
 ## 0.0.1 (2026-10-04)
 

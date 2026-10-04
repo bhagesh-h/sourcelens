@@ -41,11 +41,15 @@ Legend: `[x]` done, `[ ]` open
 - [x] Output folder for this machine kept at the Zotero folder (settings); the existing catalogue migrated to the 0.0.1 format
 - [x] Trusted publishers on PyPI and TestPyPI; v0.0.1 published to PyPI with the Go binaries on the GitHub release
 
-### Release tooling, 2026-10-04
+### After 0.0.1, 2026-10-04
 - [x] `publish/publish.sh`: release checks, install tests and manual upload in a Docker container
+- [x] Short README; the rest in `docs/`
+- [x] Project website in `site/`, deployed to GitHub Pages by `pages.yml`
+- [x] Release binaries without the version in the file name; logo without the black rim
 
 ## Open
 
+- [ ] Enable GitHub Pages (Settings > Pages > Source: GitHub Actions)
 - [ ] Go: PDF to Markdown closer to pymupdf4llm (headings, tables)
 - [ ] Ordered JSON for records in Go, so `records.jsonl.gz` is byte-identical between implementations (content already is)
 - [ ] Parity cases that run `update` and `retry` against network sources on a sandbox catalogue
