@@ -41,7 +41,7 @@ Legend: `[x]` done, `[ ]` open
 - [x] Output folder for this machine kept at the Zotero folder (settings); the existing catalogue migrated to the 0.0.1 format
 - [x] Trusted publishers on PyPI and TestPyPI; v0.0.1 published to PyPI with the Go binaries on the GitHub release
 
-### After 0.0.1, 2026-10-04
+### 1.0.0, 2026-10-04
 - [x] `publish/publish.sh`: release checks, install tests and manual upload in a Docker container
 - [x] Short README; the rest in `docs/`
 - [x] Project website in `site/`, deployed to GitHub Pages by `pages.yml`

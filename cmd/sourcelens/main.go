@@ -23,7 +23,7 @@ import (
 )
 
 // version is set at build time with -ldflags "-X main.version=..."
-var version = "0.0.1"
+var version = "1.0.0"
 
 // ---------------------------------------------------------------------------
 // vocabulary
