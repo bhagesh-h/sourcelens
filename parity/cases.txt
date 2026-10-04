@@ -1,0 +1,58 @@
+# One litSearch command per line (shell quoting). parity/check.sh runs each
+# through python/litSearch and go/litSearch and compares stdout, stderr and
+# the exit code. {X} becomes py or go, for output files that must not clash.
+version
+help
+nonsense
+update --help
+retry --help
+query --help
+export --help
+sources
+update --dry-run
+update --dry-run --range 1y --types papers
+update --dry-run --range 6m --types papers,md
+update --dry-run --from 2020 --to 2022-06
+update --dry-run --types pdf,md --sources pmc,unpaywall --range 2y
+update --dry-run --types repo,website
+update --dry-run --types md --paper-types preprint --range 1m
+update --dry-run --sources literature --scope broad
+update --dry-run --sources pubmed,arxiv --stop-on-error --parallel 2 --workers 4
+update --dry-run --sources foo
+update --dry-run --types movies
+update --dry-run --paper-types poems
+update --dry-run --range 5x
+update --dry-run --from 2024-13
+update --dry-run --workers abc
+update --dry-run --bogus
+update --dry-run --scope wide
+update stray
+retry --dry-run
+retry --dry-run --status none --types md --sources pmc
+retry --dry-run --types gif
+status
+query --text GrimAge --from 2022 --tier core --limit 20
+query --doi 10.18632/aging.101414,10.7554/elife.73420,https://doi.org/10.1186/gb-2013-14-10-r115
+query --title "epigenetic clock" --range 6m --sort cited_by --limit 15
+query --type repository --sort author --limit 25
+query --type website,database,"web calculator" --limit 100
+query --modality proteomic --clock GrimAge,PhenoAge --species human --limit 10
+query --category "clock development" --to 2014 --sort title --limit 40
+query --added-since 2026-10-01 --limit 5
+query --has-fulltext --from 2026-09 --limit 10
+query --fulltext "DunedinPACE" --from 2026-06 --type article --limit 5
+query --text "(unclosed"
+query --sort size
+query --limit -3 --from 2026-09-20
+query --text GrimAge --from 2025 --out parity_{X}/q.csv --limit 0
+export --doi 10.18632/aging.101414,10.7554/elife.73420
+export --title "GrimAge|DunedinPACE" --range 2y --format VAN,AMA --limit 30
+export --from 2025-01 --to 2025-03 --tier core --format APA,MLA,CHI,HAR,IEE,NAT
+export --from 2025-01 --to 2025-03 --tier core --format BIB,RIS,ENW,CSL
+export --type repository,"software package",website --format apa,bibtex,ris,csl-json --limit 40
+export --type preprint --from 2026-08 --format ieee,nature,chicago,harvard,vancouver,endnote --limit 25
+export --text "consortium|group" --format APA,BIB,CSL --limit 20
+export --format XYZ
+export --from 2024 --tier landmark --format APA,BIB,RIS,ENW,CSL --out parity_{X}/landmark
+export --from 2024 --tier landmark --format CSL --out parity_{X}/landmark_single.json
+test

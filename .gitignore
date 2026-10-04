@@ -1,0 +1,19 @@
+# Local paths and credentials (templates: config/*.template.yaml)
+config/local.yaml
+*.local.yaml
+.env
+.env.*
+
+# Outputs live in the output folder named in config/local.yaml; a stray
+# in-workspace output folder or export never belongs in the repository
+research/
+exports/
+
+# Build and tool caches
+__pycache__/
+*.pyc
+.cache/
+go/litSearch.bin
+*.tmp
+*.tmp.gz
+.DS_Store

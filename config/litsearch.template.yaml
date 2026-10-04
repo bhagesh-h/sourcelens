@@ -1,0 +1,708 @@
+# litSearch configuration: search terms, classification rules, repository and
+# website settings in one file, read by both implementations (python/, go/).
+#
+# The live copy is <research_dir>/config/litsearch.yaml in the output folder
+# (research_dir comes from config/local.yaml), so the configuration is kept
+# and synced together with the catalogue it produced; every update / retry
+# run also saves the copy it used in its log folder (logs/cli_<stamp>/).
+# config/litsearch.template.yaml in the workspace is the default that seeds a
+# new output folder. Local paths and credentials never go in this file; they
+# belong in config/local.yaml (git-ignored; see config/local.template.yaml).
+#
+# Sections
+#   search     search groups, terms, date window          (was config/queries.yaml)
+#   classify   rules that annotate every catalogue row    (was config/classify.yaml)
+#   repos      GitHub queries, relevance, package terms   (was config/repos.yaml)
+#   websites   curated websites, databases, calculators   (was config/websites.yaml)
+
+# ===========================================================================
+# search
+# ===========================================================================
+search:
+  # Search terms for the aging-clock literature harvest.
+  #
+  # Every group is run against Europe PMC (primary: covers PubMed, PMC and
+  # preprints from bioRxiv, medRxiv, Research Square, SSRN, arXiv q-bio ...) and
+  # against PubMed (cross-check: any PMID that PubMed returns and Europe PMC did
+  # not is resolved separately so nothing is lost between the two indexes).
+  #
+  # terms: phrases matched in TITLE OR ABSTRACT. A group can also carry
+  #   require_any: a second list; a record must then match one term from `terms`
+  #   AND one from `require_any` (both title/abstract). Used to keep broad words
+  #   such as "frailty" or "aging" on topic.
+  #
+  # scope:
+  #   focused  -> results go into progress.csv
+  #   broad    -> results go into corpus/broad_hits.csv only (metadata,
+  #               no full text), because a bare "aging" or "frailty" returns tens
+  #               of thousands of clinical and basic-biology papers that are not
+  #               about measuring biological age. Anything in a broad group that
+  #               also matches a focused group is in progress.csv anyway.
+  #
+  # Date window: start_date to end_date. end_date "today" means the date of the
+  # run, so re-running the pipeline later picks up everything published since.
+
+  start_date: "2011-01-01"
+  end_date: "today"
+
+  # Europe PMC is asked for non-MEDLINE records only (preprints, PMC-only,
+  # Agricola, theses, ...) because PubMed already returns MEDLINE. Set to "all"
+  # to have Europe PMC re-run MEDLINE too (slower; useful as a cross-check when
+  # its service is fast).
+  europepmc_sources: nonmed
+
+  groups:
+
+    epigenetic_clocks:
+      scope: focused
+      label: "Epigenetic / DNA methylation clocks"
+      terms:
+        - "epigenetic clock"
+        - "epigenetic clocks"
+        - "epigenetic age"
+        - "epigenetic ages"
+        - "epigenetic aging"
+        - "epigenetic ageing"
+        - "epigenetic age acceleration"
+        - "DNA methylation age"
+        - "DNA methylation clock"
+        - "DNA methylation clocks"
+        - "DNAm age"
+        - "DNAmAge"
+        - "methylation clock"
+        - "methylation clocks"
+        - "methylation age"
+        - "methylation-based age"
+        - "epigenetic biomarker of aging"
+        - "epigenetic biomarkers of aging"
+        - "epigenetic pacemaker"
+        - "epigenetic drift"
+
+    named_clocks:
+      scope: focused
+      label: "Named clocks and pace-of-aging measures"
+      terms:
+        - "Horvath clock"
+        - "Hannum clock"
+        - "PhenoAge"
+        - "DNAmPhenoAge"
+        - "GrimAge"
+        - "GrimAge2"
+        - "DNAmGrimAge"
+        - "DunedinPACE"
+        - "DunedinPoAm"
+        - "skin and blood clock"
+        - "PCGrimAge"
+        - "PCPhenoAge"
+        - "AltumAge"
+        - "CausAge"
+        - "AdaptAge"
+        - "SystemsAge"
+        - "OMICmAge"
+        - "IntrinClock"
+        - "PedBE"
+        - "epiTOC"
+        - "DNAmTL"
+        - "Zhang clock"
+        - "Weidner clock"
+        - "Levine clock"
+        - "pan-mammalian clock"
+
+    omics_clocks:
+      scope: focused
+      label: "Aging clocks from other molecular or physiological layers"
+      terms:
+        - "aging clock"
+        - "aging clocks"
+        - "ageing clock"
+        - "ageing clocks"
+        - "biological clock of aging"
+        - "proteomic clock"
+        - "proteomic clocks"
+        - "proteomic age"
+        - "proteomic aging"
+        - "proteomic ageing"
+        - "ProtAge"
+        - "transcriptomic clock"
+        - "transcriptomic age"
+        - "transcriptomic aging clock"
+        - "metabolomic clock"
+        - "metabolomic age"
+        - "metabolomic aging"
+        - "MetaboAge"
+        - "MetaboHealth"
+        - "lipidomic clock"
+        - "lipid clock"
+        - "glycan clock"
+        - "GlycanAge"
+        - "glycomic age"
+        - "immune age"
+        - "immunological age"
+        - "iAge"
+        - "inflammatory clock"
+        - "microbiome clock"
+        - "microbiome age"
+        - "microbial clock"
+        - "brain age"
+        - "brain-predicted age"
+        - "BrainAGE"
+        - "brain age gap"
+        - "retinal age"
+        - "retinal age gap"
+        - "heart age"
+        - "ECG age"
+        - "ECG-age"
+        - "vascular age"
+        - "facial age"
+        - "perceived age"
+        - "organ age"
+        - "organ aging clock"
+        - "organ clocks"
+        - "single-cell clock"
+        - "single-cell aging clock"
+        - "cellular aging clock"
+        - "histone clock"
+        - "chromatin clock"
+        - "ATAC clock"
+        - "multi-omic clock"
+        - "multiomic clock"
+        - "mitotic clock"
+        - "telomere clock"
+
+    biological_age:
+      scope: focused
+      label: "Biological age and age acceleration"
+      terms:
+        - "biological age"
+        - "biological ages"
+        - "biological aging"
+        - "biological ageing"
+        - "biologic age"
+        - "physiological age"
+        - "age acceleration"
+        - "age deviation"
+        - "predicted age difference"
+        - "age predictor"
+        - "age prediction model"
+        - "chronological age prediction"
+
+    aging_scores:
+      scope: focused
+      label: "Composite aging scores and pace of aging"
+      terms:
+        - "aging score"
+        - "ageing score"
+        - "aging scores"
+        - "biological age score"
+        - "aging index"
+        - "ageing index"
+        - "healthy aging index"
+        - "healthy ageing index"
+        - "Klemera-Doubal"
+        - "Klemera and Doubal"
+        - "KDM biological age"
+        - "homeostatic dysregulation"
+        - "phenotypic age"
+        - "phenotypic aging"
+        - "pace of aging"
+        - "pace of ageing"
+        - "rate of aging"
+        - "rate of ageing"
+        - "BioAge"
+        - "resilience clock"
+
+    biological_age_gated:
+      scope: focused
+      label: "Ambiguous aging-measure words, kept only next to an aging-measurement term"
+      terms:
+        - "accelerated aging"
+        - "accelerated ageing"
+        - "age gap"
+        - "delta age"
+        - "rejuvenation"
+        - "allostatic load"
+        - "intrinsic capacity"
+        - "functional age"
+      require_any:
+        - "biological age"
+        - "biological aging"
+        - "biological ageing"
+        - "epigenetic"
+        - "methylation"
+        - "clock"
+        - "aging biomarker"
+        - "biomarkers of aging"
+        - "pace of aging"
+        - "age acceleration"
+
+    frailty_focused:
+      scope: focused
+      label: "Frailty as an aging measure"
+      terms:
+        - "frailty index"
+        - "frailty indices"
+        - "frailty clock"
+        - "frailty score"
+        - "frailty phenotype"
+        - "deficit accumulation"
+        - "FI-lab"
+        - "FI-Lab"
+        - "laboratory frailty index"
+        - "frailty"
+      require_any:
+        - "methylation"
+        - "epigenetic"
+        - "clock"
+        - "biological age"
+        - "biological aging"
+        - "biological ageing"
+        - "age acceleration"
+        - "biomarker"
+        - "biomarkers"
+        - "omics"
+        - "proteomic"
+        - "metabolomic"
+        - "transcriptomic"
+        - "telomere"
+        - "mortality prediction"
+        - "machine learning"
+
+    frailty_index:
+      scope: focused
+      label: "Frailty indices (deficit accumulation)"
+      terms:
+        - "frailty index"
+        - "frailty indices"
+        - "frailty clock"
+        - "deficit accumulation"
+        - "FI-lab"
+        - "laboratory frailty index"
+
+    methylation_risk_scores:
+      scope: focused
+      label: "Methylation risk scores and DNAm surrogates"
+      terms:
+        - "methylation risk score"
+        - "methylation risk scores"
+        - "methylation score"
+        - "methylation scores"
+        - "methylation profile score"
+        - "methylation profile scores"
+        - "epigenetic risk score"
+        - "epigenetic risk scores"
+        - "epigenetic score"
+        - "epigenetic scores"
+        - "EpiScore"
+        - "EpiScores"
+        - "polyepigenetic"
+        - "poly-epigenetic"
+        - "polymethylation score"
+        - "poly-methylation score"
+        - "methylation-based predictor"
+        - "methylation-based predictors"
+        - "DNAm-based predictor"
+        - "DNAm surrogate"
+        - "DNAm surrogates"
+        - "methylation surrogate"
+        - "epigenetic predictor"
+        - "epigenetic predictors"
+        - "DNA methylation predictor"
+        - "DNA methylation-based score"
+
+    biomarkers_of_aging:
+      scope: focused
+      label: "Biomarkers of aging (framework, validation, consensus)"
+      terms:
+        - "biomarker of aging"
+        - "biomarkers of aging"
+        - "biomarker of ageing"
+        - "biomarkers of ageing"
+        - "aging biomarker"
+        - "aging biomarkers"
+        - "ageing biomarker"
+        - "ageing biomarkers"
+        - "biomarkers of healthy aging"
+        - "biomarkers of biological age"
+        - "age-related biomarkers"
+
+    age_estimation_forensic:
+      scope: focused
+      label: "DNA methylation age estimation (forensic and tissue)"
+      terms:
+        - "age estimation"
+        - "age prediction"
+        - "age predictors"
+        - "age-predictive"
+      require_any:
+        - "methylation"
+        - "epigenetic"
+        - "CpG"
+        - "DNAm"
+
+    aging_broad:
+      scope: broad
+      label: "Aging with biomarker or prediction terms (broad)"
+      terms:
+        - "aging"
+        - "ageing"
+      require_any:
+        - "biomarker"
+        - "biomarkers"
+        - "predictor"
+        - "clock"
+        - "machine learning"
+        - "deep learning"
+        - "age prediction"
+
+    frailty_broad:
+      scope: broad
+      label: "Frailty (broad)"
+      terms:
+        - "frailty"
+
+# ===========================================================================
+# classify
+# ===========================================================================
+classify:
+  # Rules that annotate each record in progress.csv.
+  #
+  # All patterns are Python regular expressions, matched case-insensitively
+  # against title + abstract + keywords + MeSH unless a rule says "title".
+  # Edit freely: the catalogue step re-derives every
+  # annotation column from these rules on each run (it never touches the
+  # hand-edited columns `notes` and `user_tags`).
+
+  # ---------------------------------------------------------------------------
+  # data layer the measure is built from; a record can carry several
+  # ---------------------------------------------------------------------------
+  modality:
+    DNA methylation: '\bmethylat|\bDNAm|\bCpG|epigenetic (clock|age|aging|ageing)|methylome|\bEPIC array|\b450K\b|bisulfite|\bRRBS\b'
+    histone/chromatin: '\bhistone|chromatin accessib|\bATAC-seq|\bH3K\d'
+    transcriptomic: 'transcriptom|RNA-seq|gene expression|\bmRNA\b|expression profil'
+    single-cell: 'single-cell|single cell|\bscRNA|\bsnRNA'
+    proteomic: 'proteom|\bOlink\b|SomaScan|SomaLogic|plasma protein|serum protein|ProtAge'
+    metabolomic: 'metabolom|\bmetabolite|Nightingale|MetaboAge|MetaboHealth|\bNMR\b'
+    lipidomic: 'lipidom'
+    glycomic: 'glycan|glycom|glycosylation'
+    microbiome: 'microbio|metagenom|\b16S\b'
+    telomere: 'telomer'
+    clinical biomarkers: 'blood chemistr|clinical biomarker|clinical chemistr|biochemical marker|Klemera|\bKDM\b|homeostatic dysregulation|phenotypic age|routine (blood|clinical|laboratory)|laboratory (values|tests|biomarkers)|blood test'
+    brain imaging: 'brain age|brain-predicted|BrainAGE|neuroimaging|\bMRI\b|magnetic resonance|brain-age'
+    retinal imaging: '\bretina|fundus'
+    ECG/cardiovascular: '\bECG\b|electrocardiogra|heart age|vascular age|arterial stiffness|pulse wave'
+    facial/photographic: 'facial|face image|perceived age|3D face'
+    physical function: '\bgait\b|grip strength|physical function|walking speed|accelerometer|wearable'
+    frailty/deficit index: 'frailty|deficit accumulation'
+    immune/inflammatory: 'immune age|\biAge\b|immunosenescen|inflammaging|inflamm-aging|IMM-AGE'
+    multi-omic: 'multi-?omic|multi-?modal'
+
+  # ---------------------------------------------------------------------------
+  # organism
+  # ---------------------------------------------------------------------------
+  species:
+    mouse: '\bmice\b|\bmouse\b|\bmurine\b|Mus musculus'
+    rat: '\brats?\b'
+    dog/cat: '\bdogs?\b|\bcanine\b|\bcats?\b|\bfeline\b'
+    non-human primate: 'macaque|rhesus|chimpanzee|non-human primate|nonhuman primate|marmoset'
+    multi-species/mammalian: 'pan-mammalian|universal (pan-)?mammalian|across mammal|mammalian species|cross-species'
+    other vertebrates: 'zebrafish|\bbirds?\b|\bfish\b|\bbats?\b|whale|dolphin|horse|equine|cattle|bovine|sheep|\bpigs?\b|porcine|elephant|naked mole'
+    invertebrates: 'drosophila|C\. elegans|Caenorhabditis|yeast'
+    human: '\bhumans?\b|\bpatients?\b|\bparticipants?\b|\bindividuals\b|\bwomen\b|\bmen\b|\bchildren\b|\badults?\b|\bcohort\b|\bsubjects\b'
+
+  # ---------------------------------------------------------------------------
+  # what the work contributes; first matching rule wins (order matters)
+  # ---------------------------------------------------------------------------
+  category:
+    - name: correction/retraction
+      pub_types: 'Erratum|Retraction|Correction|Expression of Concern'
+      title: '^(correction|erratum|retraction|retracted)\b|^(author )?correction to'
+    - name: commentary
+      pub_types: '^(Comment|Editorial|Letter|News)(;|$)|; (Comment|Editorial|Letter|News)(;|$)'
+      title: '^(comment|editorial|reply|response to|letter)\b'
+    - name: review
+      pub_types: 'Review|Meta-Analysis|review-article'
+      title: '\breview\b|systematic review|meta-analys|\boverview\b|state of the art|\bprimer\b|perspective|scoping|narrative review|\bconsensus\b|recommendations|roadmap|framework for'
+    - name: software/resource
+      title: '\b(R|Python) package|\bpackage\b|\bsoftware\b|\btool(kit|box)?s?\b|web ?server|web(-| )based (tool|calculator|platform)|\bdatabase\b|\batlas\b|\bpipeline\b|\bcompendium\b|\bresource\b|\bbenchmark(ing)? (dataset|platform|suite)|\bplatform\b'
+    - name: benchmark/comparison
+      text: 'compar\w* (of |between |across )?(\w+[ -]){0,4}(clocks|measures of (biological )?ag|aging measures|ageing measures|biomarkers of ag|predictors|age estimators)|\bbenchmark|head-to-head|test-retest|technical (noise|reliability)|reliability of (\w+ ){0,3}(clocks|measures)|systematic(ally)? (evaluat|compar)|performance of (\w+ ){0,4}clocks'
+    - name: clock development
+      # "we developed/trained ... a clock/predictor/score" with an aging word in
+      # the same sentence (a generic "we developed a model" is not enough)
+      text: '\b(we|I|here,? we|this study|in this (study|work|paper),? we)\b(?=[^.]{0,280}\b(age|ages|aging|ageing|clocks?|frailty|lifespan|longevity|mortality|senescence|biological age)\b)[^.]{0,100}\b(develop|construct|built|build|train|creat|deriv|establish|introduc|propos|present|design)\w*\b[^.]{0,140}\b(clocks?|predictors?|estimators?|scores?|indices|index|measures?|biomarkers?|signatures?|calculators?)\b'
+      # "X as a predictor of mortality" is an application, so "predictor of"
+      # only counts when what is predicted is an age
+      title: '\b(novel|new|improved|refined|development|developing|construction|deriving|derivation)\b.{0,80}\b(clocks?|predictors?|estimators?|scores?|index|measures?|biomarkers?)\b|\b(clock|estimator) (for|of|based on|trained)\b|\bpredictors? (for|of) (\w+ )?(biological |chronological |epigenetic |gestational |brain |phenotypic )?age\b|^(\w+[ -]){0,3}(clock|Age)\b:'
+    - name: intervention/trial
+      text: '\brandomi[sz]ed\b|\bclinical trial\b|\bplacebo\b|\bintervention\b|\bsupplementation\b|caloric restriction|calorie restriction|exercise training|\breversal\b|\brejuvenat'
+    - name: mechanism/genetics
+      text: 'mendelian randomi[sz]ation|genome-wide association|\bGWAS\b|heritab|\bcausal\b|mechanis'
+
+  # ---------------------------------------------------------------------------
+  # tiering
+  # ---------------------------------------------------------------------------
+  # a record is "core" when one of these appears in its TITLE (or it is a clock
+  # development, benchmark, review or software/resource paper); otherwise
+  # records from focused searches are "related". Seeds from the clock registry
+  # and curated methods lists are "landmark".
+  core_title_terms: 'clock|biological(ly)? ag|biologic age|epigenetic (age|aging|ageing)|methylation (age|aging|ageing)|DNAm ?age|\bage acceleration|accelerated (epigenetic )?ag|aging score|ageing score|aging index|ageing index|pace of (aging|ageing)|rate of (aging|ageing)|PhenoAge|GrimAge|DunedinP|Horvath|Hannum|frailty ind|frailty clock|deficit accumulation|methylation (risk )?score|epigenetic (risk )?score|EpiScore|poly-?epigenetic|methylation profile score|(DNAm|methylation|epigenetic) surrogate|biomarkers? of (healthy )?(aging|ageing)|(aging|ageing) biomarker|brain(-predicted)? age|phenotypic age|Klemera|homeostatic dysregulation|age (prediction|predictor|estimation|estimator)|predicted age|age gap|epigenetic predictor|MetaboAge|ProtAge|GlycanAge|\biAge\b|organ age|heart age|vascular age|retinal age|physiological age'
+
+  landmark_roles: [clock_origin, clock_reference, benchmark, methods_reference]
+
+  # ---------------------------------------------------------------------------
+  # named clocks and scores (matched with word boundaries, case-sensitive
+  # unless the pattern starts with (?i)); name: pattern
+  # ---------------------------------------------------------------------------
+  clock_names:
+    Horvath2013 (pan-tissue): '(?i)Horvath(''s)? (multi-tissue |pan-tissue |)?(clock|age|DNAm ?age)|DNAmAge ?Horvath|Horvath2013|Horvath 2013'
+    Hannum: '(?i)Hannum'
+    Skin&Blood: '(?i)skin(-| and | & |&)blood clock|Horvath2018|skinandblood|DNAmAgeSkinBlood'
+    PhenoAge (DNAm): '(?i)DNAm ?PhenoAge|Levine(''s)? (DNAm |epigenetic )?(clock|PhenoAge)'
+    PhenoAge (clinical): '(?i)(clinical|phenotypic|blood[- ]based|biochemistry) PhenoAge|\bPhenotypic Age\b|Phenotypic Age Acceleration'
+    PhenoAge: 'PhenoAge'
+    GrimAge: 'GrimAge(?!2| ?v2|[- ]version 2)'
+    GrimAge2: 'GrimAge ?2|GrimAge ?v2|GrimAge version 2'
+    DunedinPACE: '(?i)DunedinPACE'
+    DunedinPoAm: '(?i)DunedinPoAm'
+    PC clocks: '\bPC(Horvath|Hannum|PhenoAge|GrimAge|DNAmTL|SkinBlood|Horvath1|Horvath2)|PC-?clocks?|principal[- ]component(-based)? (epigenetic )?clocks?'
+    DNAmTL: 'DNAmTL|DNAm telomere length|DNAm-based telomere|(?i:DNA methylation[- ]based estimator of telomere length)'
+    Zhang (EN/BLUP): '(?i)Zhang(''s)? (clock|elastic net|BLUP)|\bBLUP\b clock'
+    Weidner: '(?i)Weidner'
+    Lin99: '(?i)\bLin(''s)? (clock|99)'
+    Vidal-Bralo: '(?i)Vidal-?Bralo'
+    Wu (pediatric): '(?i)\bWu(''s)? clock'
+    PedBE: 'PedBE'
+    Knight (gestational): '(?i)Knight(''s)? (clock|gestational)'
+    Bohlin (gestational): '(?i)Bohlin'
+    EPIC gestational (Haftorn): '(?i)Haftorn|EPIC GA clock'
+    Placental clocks (Lee/Mayne): '(?i)placental (epigenetic )?clock|Mayne(''s)? clock|refined robust placental'
+    epiTOC: 'epiTOC ?[123]?|epiTOC'
+    HypoClock: 'HypoClock'
+    MiAge: 'MiAge'
+    stemTOC: 'stemTOC'
+    EpiCMIT: 'EpiCMIT'
+    RepliTali: 'RepliTali'
+    AltumAge: 'AltumAge'
+    CausAge/DamAge/AdaptAge: 'CausAge|DamAge\b|AdaptAge'
+    SystemsAge: '(?i)Systems ?Age'
+    OMICmAge: 'OMICmAge|EMRAge'
+    IntrinClock: 'IntrinClock'
+    RetroAge: '(?i)Retro-?age|RetroClock'
+    EnsembleAge: 'EnsembleAge'
+    cAge/bAge: '\bcAge\b|\bbAge\b'
+    DNAmFitAge: 'DNAmFitAge'
+    DNAmFI/FIAge: 'DNAm ?FI\b|DNAmFI|FI ?Age\b|FIAge|epigenetic frailty (risk )?score'
+    DNAmIC: 'DNAmIC'
+    Pan-mammalian clocks: '(?i)(pan|universal)[- ]mammalian (epigenetic |methylation )?clocks?|Clock ?[123] \(mammal'
+    Cortical clock: '(?i)cortical clock|DNAmClockCortical'
+    Epigenetic Pacemaker: '(?i)epigenetic pacemaker'
+    scAge / single-cell clocks: 'scAge|scImmuAging|sc-ImmuAging|single-cell (aging )?clocks?|(?i:(epigenetic|biological|transcriptomic) age[^.]{0,20}single cells?)'
+    Mouse clocks (Petkovich/Stubbs/Meer/Thompson/Wang): '(?i)Petkovich|Stubbs(''s)? clock|Meer(''s)? clock|Thompson(''s)? clock|mouse (epigenetic |DNAm )?clock'
+    CpGPT: 'CpGPT'
+    Mortality risk score: '(?i)mortality risk score|\bMRscore'
+    EpiScores: 'EpiScores?'
+    Klemera-Doubal (KDM): '(?i)Klemera|\bKDM\b'
+    Homeostatic dysregulation: '(?i)homeostatic dysregulation|Mahalanobis distance'
+    Frailty index: '(?i)frailty ind(ex|ices)|\bFI-?Lab\b|deficit accumulation'
+    BrainAGE / brain age: '(?i)brain ?age|brain-predicted age|BrainAGE|brain-PAD'
+    MetaboAge/MetaboHealth: 'MetaboAge|MetaboHealth'
+    ProtAge / proteomic clocks: '(?i)ProtAge|proteomic (aging )?clocks?|organ (aging )?clocks?|organ age'
+    GlycanAge: '(?i)GlycanAge|glycan (age|clock)'
+    iAge / immune clocks: '\biAge\b|IMM-AGE|(?i:immune (age|clock))'
+    Transcriptomic clocks: '(?i)transcriptomic (age|clock)|RNAAgeCalc|Peters(''s)? transcriptomic'
+    Microbiome clocks: '(?i)microbiome (age|clock)|microbial clock'
+    Retinal age: '(?i)retinal age'
+    Heart/vascular age: '(?i)heart age|vascular age|ECG[- ]age'
+    LinAge: 'LinAge ?2?'
+    Healthy Aging Index: '(?i)healthy ag(e)?ing index'
+    Allostatic load: '(?i)allostatic load'
+
+# ===========================================================================
+# repos
+# ===========================================================================
+repos:
+  # Repository and package searches.
+  #
+  # github_queries: run against the GitHub repository search API (forks
+  #   excluded). Each query returns at most 1000 repositories.
+  # relevance: a GitHub search hit is kept only if its name, description or
+  #   topics match this pattern (search matches README text too, which is
+  #   noisy). Word boundaries matter: "brain age" must not match "brain-agent",
+  #   "BioAge" must not match "BioAgents". Re-evaluated on every build.
+  #   Repositories linked from a catalogued paper or from the local projects
+  #   are always kept.
+  # package_terms: matched against CRAN / Bioconductor package titles and
+  #   descriptions, and used as PyPI name guesses.
+
+  github_queries:
+    - "epigenetic clock"
+    - "epigenetic clocks"
+    - "epigenetic age"
+    - "epigenetic aging"
+    - "DNA methylation age"
+    - "methylation clock"
+    - "methylation age"
+    - "aging clock"
+    - "ageing clock"
+    - "aging clocks"
+    - "biological age"
+    - "biological aging"
+    - "biological ageing"
+    - "PhenoAge"
+    - "GrimAge"
+    - "DunedinPACE"
+    - "Horvath clock"
+    - "age prediction methylation"
+    - "age estimation methylation"
+    - "frailty index"
+    - "brain age"
+    - "brain age prediction"
+    - "proteomic clock"
+    - "proteomic age"
+    - "transcriptomic clock"
+    - "transcriptomic age"
+    - "metabolomic age"
+    - "methylation risk score"
+    - "methylation score"
+    - "epigenetic score"
+    - "EpiScore"
+    - "pace of aging"
+    - "Klemera Doubal"
+    - "BioAge"
+    - "aging biomarker"
+    - "biomarkers of aging"
+    - "retinal age"
+    - "single cell aging clock"
+    - "mortality predictor methylation"
+    - "topic:epigenetic-clock"
+    - "topic:epigenetic-clocks"
+    - "topic:aging-clock"
+    - "topic:biological-age"
+    - "topic:epigenetic-age"
+    - "topic:aging-biomarkers"
+    - "topic:brain-age"
+    - "topic:frailty-index"
+
+  relevance: '(?i)(epigenetic|aging|ageing|methylation|biological|proteomic|transcriptomic|metabolomic|mitotic|mortality|organ|brain|dnam|immune|glycan|frailty|pace)[ _-]?(age[ _-]?)?clocks?\b|clocks?[ _-](of|for)[ _-](aging|ageing|age)\b|biolog\w*[ _-]?ag(e|ing|eing)\b|epigenetic[ _-]?(age|aging|ageing|clock)|methylation[ _-]?(age|clock)|\bdnam[ _-]?age\b|phenoage|grimage|dunedin|horvath|hannum|frailty|brain[ _-]?age\b|brainage\b|age[ _-]?(predict|estimat|gap|accel)|predict\w*[ _-](brain[ _-]|biological[ _-]|chronological[ _-])?age\b|longevity|\baging\b|\bageing\b|episcore|methylation[ _-]?(risk[ _-]?)?score|klemera|\bbioage\b|lifespan|pace[ _-]?of[ _-]?ag|healthspan|senescen|\borgan[ _-]?age|\borganage\b|estimat\w*[^.]{0,40}\b(biological|organ|brain|epigenetic) age\b'
+
+  package_terms: '(?i)\bepigenetic (clock|age)|\bDNA methylation (age|clock)|\bmethylation (clock|age)\b|\bag(e|ing|eing) clocks?\b|\bbiological age\b|\bDNAm age\b|PhenoAge|GrimAge|DunedinPACE|\bpace of aging\b|\bfrailty index\b|Klemera|\bmethylation (risk|profile) scores?\b|\bepigenetic risk scores?\b|\bEpiScores?\b|\b(DNA methylation|methylation|epigenetic|biological) age (prediction|estimation)\b|\baging biomarkers?\b|\bbiomarkers of aging\b|\bepigenetic age\b'
+
+  # packages known from the local projects' documentation (FALCONAge, 300BCG,
+  # 300OB) that the searches may not surface by description
+  known_packages:
+    # clock implementations only; preprocessing (minfi, sesame) and cell-type
+    # deconvolution (EpiDISH, FlowSorted) packages are not aging resources
+    cran: [BioAge, dnaMethyAge, DunedinPACE, meffonym, methylCIPHER, cAge]
+    bioconductor: [methylclock, methylclockData, wateRmelon, ENmix, planet, MEAT]
+    pypi: [pyaging, biolearn, falconage, altumage, epigenetic-clock, clockbase]
+
+# ===========================================================================
+# websites
+# ===========================================================================
+websites:
+  # Curated websites, databases, calculators and data resources for aging clocks.
+  #
+  # Each entry is verified live by the websites step and the
+  # page's own <title> is recorded next to the name given here. `urls` lists
+  # alternatives tried in order. A site that refuses automated requests (HTTP
+  # 401/403/429) is kept with a note; one that is offline is kept only if the
+  # Internet Archive has a copy, which then becomes its link. Entries whose
+  # identity could not be verified (empty page, unrelated title) were removed.
+  # `date` is filled from the earliest Internet Archive snapshot unless given.
+  # `related_doi` links the site to the paper that introduced it, if any.
+  #
+  # Starting points came from the local projects (FALCONAge registry and docs,
+  # 300BCG, 300OB); links mined from catalogued papers are added automatically
+  # from websites/candidate_websites.csv when a domain is cited by
+  # several papers and its home page is about aging measurement.
+
+  sites:
+    - name: Clock Foundation
+      urls: [https://clockfoundation.org/]
+      type: organization
+      note: Non-profit founded around the Horvath clocks; runs the DNA methylation age calculator.
+    - name: DNA Methylation Age Calculator (Clock Foundation)
+      urls: [https://dnamage.clockfoundation.org/]
+      type: web calculator
+      note: Online calculator for Horvath, Hannum, PhenoAge, GrimAge and other DNAm clocks.
+    - name: DNA Methylation Age Calculator (legacy UCLA)
+      urls: [http://dnamage.genetics.ucla.edu/, http://labs.genetics.ucla.edu/horvath/dnamage/]
+      type: web calculator
+      note: Original calculator released with Horvath 2013.
+      related_doi: 10.1186/gb-2013-14-10-r115
+    - name: TranslAGE
+      urls: [https://www.translage.io/]
+      type: clock database / platform
+      note: Catalogue of epigenetic clocks cited by the FALCONAge registry.
+    - name: ClockBase
+      urls: [https://clockbase.org/]
+      type: database
+      note: Aging-clock scores computed across public methylation datasets.
+    - name: Biomarkers of Aging Consortium
+      urls: [https://www.agingconsortium.org/, https://www.biomarkersofaging.org/]
+      type: consortium
+      note: Consortium behind the biomarkers-of-aging framework and Biolearn.
+    - name: Biolearn documentation
+      urls: [https://bio-learn.github.io/]
+      type: software documentation
+    - name: pyaging documentation
+      urls: [https://pyaging.readthedocs.io/]
+      type: software documentation
+      related_doi: 10.1093/bioinformatics/btae200
+    - name: ComputAgeBench benchmark dataset
+      urls: [https://huggingface.co/datasets/computage/computage_bench]
+      type: benchmark dataset
+    - name: Human Ageing Genomic Resources (HAGR)
+      urls: [https://genomics.senescence.info/]
+      type: database
+    - name: AnAge (animal ageing and longevity database)
+      urls: [https://genomics.senescence.info/species/]
+      type: database
+    - name: Aging Atlas
+      urls: [https://ngdc.cncb.ac.cn/aging/]
+      type: database
+    - name: EWAS Atlas
+      urls: [https://ngdc.cncb.ac.cn/ewas/atlas]
+      type: database
+    - name: XPRIZE Healthspan
+      urls: [https://www.xprize.org/prizes/healthspan]
+      type: initiative
+      note: Competition scored in part with aging biomarkers.
+    - name: UK Biobank
+      urls: [https://www.ukbiobank.ac.uk/]
+      type: cohort data resource
+      note: Training and validation data for proteomic, metabolomic and clinical clocks.
+    - name: NHANES
+      urls: [https://www.cdc.gov/nchs/nhanes/]
+      type: cohort data resource
+      note: Training data for clinical PhenoAge and KDM biological age.
+    - name: Dunedin Study
+      urls: [https://dunedinstudy.otago.ac.nz/]
+      type: cohort data resource
+      note: Cohort behind the Pace of Aging, DunedinPoAm and DunedinPACE.
+    - name: Health and Retirement Study
+      urls: [https://hrs.isr.umich.edu/]
+      type: cohort data resource
+      note: Releases epigenetic clock values for its participants.
+    - name: Generation Scotland
+      urls: [https://www.ed.ac.uk/generation-scotland]
+      type: cohort data resource
+      note: Cohort behind EpiScores and several clock comparisons.
+    - name: Lothian Birth Cohorts
+      urls: [https://www.ed.ac.uk/lothian-birth-cohorts]
+      type: cohort data resource
+    - name: Framingham Heart Study
+      urls: [https://www.framinghamheartstudy.org/]
+      type: cohort data resource
+    - name: TruDiagnostic
+      urls: [https://www.trudiagnostic.com/]
+      type: commercial test provider
+    - name: GlycanAge
+      urls: [https://glycanage.com/]
+      type: commercial test provider
+    - name: Tally Health
+      urls: [https://tallyhealth.com/]
+      type: commercial test provider
+    - name: myDNAge (Epimorphy / Zymo)
+      urls: [https://www.mydnage.com/]
+      type: commercial test provider
