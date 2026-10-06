@@ -203,9 +203,9 @@
   </header>
 
   <p class="lede">Give it a topic. It searches PubMed, Europe PMC, arXiv and OpenAlex,
-  downloads the open-access full texts, finds the code the papers link to, and
-  keeps everything in one table, oldest first. Run it again later and it adds
-  only what is new.</p>
+  downloads the open-access full texts with their figures and supplementary
+  files, finds the code the papers link to, and keeps everything in one table,
+  oldest first. Run it again later and it adds only what is new.</p>
 
   <div class="get">
     <div>
@@ -219,8 +219,9 @@
       <div class="buttons">
         <a class="btn" data-asset="linux_amd64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_linux_amd64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Linux <small>x86-64</small></a>
         <a class="btn" data-asset="linux_arm64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_linux_arm64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Linux <small>ARM64</small></a>
-        <a class="btn" data-asset="darwin_arm64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_darwin_arm64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>macOS <small>Apple silicon</small></a>
-        <a class="btn" data-asset="darwin_amd64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_darwin_amd64"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>macOS <small>Intel</small></a>
+        <a class="btn" data-asset="macos" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_macos"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>macOS <small>Apple silicon and Intel</small></a>
+        <a class="btn" data-asset="windows_amd64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_windows_amd64.exe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Windows <small>x86-64</small></a>
+        <a class="btn" data-asset="windows_arm64" href="https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_windows_arm64.exe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0L4.5 6.5M8 10l3.5-3.5M3 13.5h10" stroke="currentColor" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Windows <small>ARM64</small></a>
       </div>
     </div>
   </div>
@@ -228,13 +229,15 @@
   <h2 id="install">Install</h2>
 
   <div class="code"><pre><code>pip install sourcelens</code></pre></div>
-  <p>or the Go binary (Linux x86-64; for another system use the address of its button):</p>
-  <div class="code"><pre><code>curl -fLo sourcelens <span data-asset-text="linux_amd64">https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_linux_amd64</span>
-chmod +x sourcelens &amp;&amp; mv sourcelens ~/.local/bin/</code></pre></div>
+  <p>or the Go binary for this computer, on Linux and macOS:</p>
+  <div class="code"><pre><code>curl -fsSL https://raw.githubusercontent.com/bhagesh-h/sourcelens/main/install.sh | sh</code></pre></div>
+  <p>on Windows, in PowerShell:</p>
+  <div class="code"><pre><code>irm https://raw.githubusercontent.com/bhagesh-h/sourcelens/main/install.ps1 | iex</code></pre></div>
   <p>or with Go:</p>
   <div class="code"><pre><code>go install github.com/bhagesh-h/sourcelens/cmd/sourcelens@latest</code></pre></div>
-  <p class="note">Python 3.10 or newer. The binaries are not signed: if macOS blocks
-  one downloaded in a browser, run <code>xattr -d com.apple.quarantine sourcelens</code>.</p>
+  <p class="note">Python 3.10 or newer. The macOS file runs on Apple silicon and Intel.
+  The binaries are not signed: if macOS blocks one downloaded in a browser, run
+  <code>xattr -d com.apple.quarantine sourcelens</code>.</p>
 
   <h2 id="use">Use</h2>
 
@@ -248,6 +251,12 @@ sourcelens "CRISPR base editing"
 sourcelens query --topic "CRISPR base editing" --range 1m
 sourcelens export --topic "CRISPR base editing" --format BIB --out crispr.bib</code></pre></div>
 
+  <p>Look first, then download only what you pick:</p>
+  <div class="code"><pre><code>sourcelens "CRISPR base editing" --dry-run
+sourcelens query --topic "CRISPR base editing" --in reports/dryrun_&lt;stamp&gt;.csv --summary "off-target" --out picked.csv
+sourcelens download --topic "CRISPR base editing" exports/picked.csv
+sourcelens files --topic "CRISPR base editing" --ext xlsx,csv --copy-to ~/tables</code></pre></div>
+
   <p>Commas and <code>OR</code> separate alternatives, every word of an alternative
   is required, and quotes keep a phrase: <code>sourcelens '"base editing", "prime editing"'</code>.</p>
 
@@ -255,12 +264,14 @@ sourcelens export --topic "CRISPR base editing" --format BIB --out crispr.bib</c
     <dt>--range 1m, --from 2024</dt><dd>how far back to search (a new topic starts 12 months back)</dd>
     <dt>--types papers</dt><dd>metadata only, no downloads</dd>
     <dt>--sources pubmed,arxiv</dt><dd>only these sources</dd>
-    <dt>--dry-run</dt><dd>print the plan and run nothing</dd>
+    <dt>--ext xlsx,pptx</dt><dd>attachment file types to download</dd>
+    <dt>--dry-run</dt><dd>metadata and a table of what could be downloaded, no downloads</dd>
   </dl>
 
   <p>Each topic gets a folder under <code>~/sourcelens</code> with
   <code>progress.csv</code> (one row per paper, preprint, repository or website),
-  the full texts, and the exports.</p>
+  the full texts and attachments, and after every run a report: one page with
+  the numbers and a searchable table of the catalogue.</p>
 
   <h2 id="docs">Documentation</h2>
   <ul class="docs">
@@ -322,15 +333,12 @@ sourcelens export --topic "CRISPR base editing" --format BIB --out crispr.bib</c
       document.getElementById("version").textContent = " " + release.tag_name;
       var urls = {};
       (release.assets || []).forEach(function (asset) {
-        var m = asset.name.match(/_(linux|darwin)_(amd64|arm64)$/);
-        if (!m) return;
-        var key = m[1] + "_" + m[2];
-        var stable = /^sourcelens_[a-z]+_[a-z0-9]+$/.test(asset.name);
-        if (!urls[key] || stable) urls[key] = asset.browser_download_url;
+        var m = asset.name.match(/^sourcelens_(linux_amd64|linux_arm64|macos|windows_amd64|windows_arm64)(\.exe)?$/);
+        if (m) urls[m[1]] = asset.browser_download_url;
       });
-      Object.keys(urls).forEach(function (key) {
-        document.querySelectorAll('[data-asset="' + key + '"]').forEach(function (a) { a.href = urls[key]; });
-        document.querySelectorAll('[data-asset-text="' + key + '"]').forEach(function (s) { s.textContent = urls[key]; });
+      // a file this release does not have: its release page
+      document.querySelectorAll("[data-asset]").forEach(function (a) {
+        a.href = urls[a.getAttribute("data-asset")] || release.html_url;
       });
     })
     .catch(function () { /* keep the static links */ });

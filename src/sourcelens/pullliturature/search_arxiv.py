@@ -104,7 +104,7 @@ def main() -> None:
     # re-run only looks back to the last complete run (with a 14-day overlap
     # for late-indexed submissions); --full re-scans everything
     state_file = RAW / "arxiv" / "state.json"
-    state = json.loads(state_file.read_text()) if state_file.exists() else {}
+    state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
     if state.get("last_complete_run") and not (args.full or args.groups or explicit):
         since = (dt.date.fromisoformat(state["last_complete_run"]) - dt.timedelta(days=14)).isoformat()
         start = max(start, since)
@@ -133,7 +133,7 @@ def main() -> None:
         hitlog.save(hits)
     if not (args.groups or explicit):
         state_file.parent.mkdir(parents=True, exist_ok=True)
-        state_file.write_text(json.dumps({"last_complete_run": run, "window": [start, end]}))
+        state_file.write_text(json.dumps({"last_complete_run": run, "window": [start, end]}), encoding="utf-8")
     log(f"done: store {len(store)} records")
 
 

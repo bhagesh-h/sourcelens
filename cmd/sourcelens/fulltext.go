@@ -2,7 +2,9 @@ package main
 
 // Full texts ("fulltext" step). Python twin: src/sourcelens/pullliturature/fetch_fulltext.py:
 // PMC open-access bucket -> bioRxiv / medRxiv -> Europe PMC XML -> arXiv ->
-// Unpaywall; formats pdf / md / txt / xml; metadata.json per record; index.
+// Unpaywall -> OpenAlex; formats pdf / md / txt / xml and the paper's
+// attachments; metadata.json per record that has a file; an index row with
+// the status and the reason for every record tried.
 
 import (
 	"bytes"
@@ -33,13 +35,15 @@ var (
 	allFormats    = []string{"md", "pdf", "txt", "xml"}
 	allFTSources  = []string{"arxiv", "biorxiv", "europepmc", "openalex", "pmc", "unpaywall"}
 	articleTypes  = []string{"article", "book chapter", "conference paper", "preprint", "report", "review", "thesis"}
-	indexCols     = []string{"uid", "status", "source", "license", "has_pdf", "has_md", "has_txt", "has_xml", "folder", "pdf_url", "checked_on", "note"}
+	indexCols     = []string{"uid", "status", "reason", "source", "license", "has_pdf", "has_md", "has_txt", "has_xml", "attachments", "folder", "pdf_url", "checked_on", "note"}
 	preprintHosts = map[string]bool{"www.biorxiv.org": true, "www.medrxiv.org": true}
 	hostInterval  = map[string]time.Duration{"pmc-oa-opendata.s3.amazonaws.com": 20 * time.Millisecond,
 		"api.unpaywall.org": 100 * time.Millisecond, "api.biorxiv.org": 500 * time.Millisecond,
 		"www.ebi.ac.uk": 250 * time.Millisecond, "www.biorxiv.org": 6 * time.Second,
 		"www.medrxiv.org": 6 * time.Second, "arxiv.org": 3 * time.Second}
-	s3KeyRe = regexp.MustCompile(`<Key>([^<]+)</Key>`)
+	s3KeyRe      = regexp.MustCompile(`<Key>([^<]+)</Key>`)
+	s3ContentsRe = regexp.MustCompile(`(?s)<Contents>(.*?)</Contents>`)
+	s3SizeRe     = regexp.MustCompile(`<Size>(\d+)</Size>`)
 )
 
 func browserUA() string {
@@ -130,30 +134,90 @@ func (x *ftCtx) getBytes(u string, wantPDF bool) []byte {
 	return b
 }
 
-func (x *ftCtx) pmcS3(pmcid string) (map[string]any, bool) {
-	r := x.c.Get(s3Base+"/", reqOpts{params: url.Values{"list-type": {"2"}, "prefix": {pmcid + "."}, "max-keys": {"100"}}})
+type mediaFile struct {
+	name string
+	size int
+}
+
+type pmcList struct {
+	version int
+	names   []string // listing order
+	sizes   map[string]int
+}
+
+// pmcListing: the latest version of an article in the PMC bucket with its
+// files and sizes; nil when it is not in the open-access subset; failed when
+// the bucket could not be asked.
+func (x *ftCtx) pmcListing(pmcid string) (lst *pmcList, failed bool) {
+	r := x.c.Get(s3Base+"/", reqOpts{params: url.Values{"list-type": {"2"}, "prefix": {pmcid + "."}, "max-keys": {"1000"}}})
 	if r == nil || r.Status != 200 {
-		return nil, true // listing failed
+		return nil, true
 	}
-	re := regexp.MustCompile(`^` + regexp.QuoteMeta(pmcid) + `\.(\d+)/` + regexp.QuoteMeta(pmcid) + `\.\d+\.json$`)
+	pat := regexp.MustCompile(`^` + regexp.QuoteMeta(pmcid) + `\.(\d+)/(.+)$`)
+	versions := map[int]*pmcList{}
+	for _, c := range s3ContentsRe.FindAllStringSubmatch(r.Text(), -1) {
+		k := s3KeyRe.FindStringSubmatch(c[1])
+		if k == nil {
+			continue
+		}
+		m := pat.FindStringSubmatch(xmlUnescape(k[1]))
+		if m == nil {
+			continue
+		}
+		v, _ := strconv.Atoi(m[1])
+		l := versions[v]
+		if l == nil {
+			l = &pmcList{version: v, sizes: map[string]int{}}
+			versions[v] = l
+		}
+		size := -1
+		if sz := s3SizeRe.FindStringSubmatch(c[1]); sz != nil {
+			size, _ = strconv.Atoi(sz[1])
+		}
+		if _, seen := l.sizes[m[2]]; !seen {
+			l.names = append(l.names, m[2])
+		}
+		l.sizes[m[2]] = size
+	}
 	best := -1
-	for _, m := range s3KeyRe.FindAllStringSubmatch(r.Text(), -1) {
-		if mm := re.FindStringSubmatch(m[1]); mm != nil {
-			if v, _ := strconv.Atoi(mm[1]); v > best {
-				best = v
-			}
+	for v, l := range versions {
+		if _, ok := l.sizes[fmt.Sprintf("%s.%d.json", pmcid, v)]; ok && v > best {
+			best = v
 		}
 	}
 	if best < 0 {
 		return nil, false
 	}
-	j := x.c.Get(fmt.Sprintf("%s/%s.%d/%s.%d.json", s3Base, pmcid, best, pmcid, best), reqOpts{})
+	return versions[best], false
+}
+
+// pmcMedia: the article's attachments, every file but its own XML / text / PDF / JSON.
+func pmcMedia(pmcid string, l *pmcList) []mediaFile {
+	own := fmt.Sprintf("%s.%d.", pmcid, l.version)
+	var out []mediaFile
+	for _, n := range l.names {
+		if !strings.HasPrefix(n, own) && !strings.Contains(n, "/") {
+			out = append(out, mediaFile{n, l.sizes[n]})
+		}
+	}
+	return out
+}
+
+// pmcS3: the latest version's JSON record with "_version" and "_media"; nil
+// when not in the open-access subset; failed when the bucket could not be read.
+func (x *ftCtx) pmcS3(pmcid string) (map[string]any, bool) {
+	l, failed := x.pmcListing(pmcid)
+	if l == nil {
+		return nil, failed
+	}
+	j := x.c.Get(fmt.Sprintf("%s/%s.%d/%s.%d.json", s3Base, pmcid, l.version, pmcid, l.version), reqOpts{})
 	if j == nil || j.Status != 200 {
 		return nil, false
 	}
 	m := decodeJSON(j.Body)
 	if m != nil {
-		m["_version"] = best
+		m["_version"] = l.version
+		m["_media"] = pmcMedia(pmcid, l)
 	}
 	return m, false
 }
@@ -325,7 +389,7 @@ func folderFor(rec Rec, row Row) string {
 
 func indexRow(uid, folder string, ft map[string]any) Row {
 	has := func(f string) string {
-		if fileExists(filepath.Join(folder, formatFiles[f])) {
+		if folder != "" && fileExists(filepath.Join(folder, formatFiles[f])) {
 			return "True"
 		}
 		return "False"
@@ -336,9 +400,32 @@ func indexRow(uid, folder string, ft map[string]any) Row {
 	if checked == "" {
 		checked = today()
 	}
-	return Row{"uid": uid, "status": jstr(ft, "status"), "source": jstr(ft, "source"), "license": jstr(ft, "license"),
-		"has_pdf": has("pdf"), "has_md": has("md"), "has_txt": has("txt"), "has_xml": has("xml"),
-		"folder": researchRel(folder), "pdf_url": pdfURL, "checked_on": runeCut(checked, 10), "note": ""}
+	rel := ""
+	if folder != "" {
+		rel = researchRel(folder)
+	}
+	return Row{"uid": uid, "status": jstr(ft, "status"), "reason": jstr(ft, "reason"), "source": jstr(ft, "source"),
+		"license": jstr(ft, "license"), "has_pdf": has("pdf"), "has_md": has("md"), "has_txt": has("txt"),
+		"has_xml": has("xml"), "attachments": "", "folder": rel, "pdf_url": pdfURL,
+		"checked_on": runeCut(checked, 10), "note": ""}
+}
+
+// tidy removes a record folder that holds nothing but its metadata.json (an
+// attempt that found no file).
+func tidy(folder string) bool {
+	ents, err := os.ReadDir(folder)
+	if err != nil {
+		return false
+	}
+	for _, e := range ents {
+		if e.Name() != "metadata.json" && e.Name() != ".paper.tmp.pdf" {
+			return false
+		}
+	}
+	for _, e := range ents {
+		_ = os.Remove(filepath.Join(folder, e.Name()))
+	}
+	return os.Remove(folder) == nil
 }
 
 func fromDisk(rec Rec, row Row, formats []string) Row {
@@ -367,18 +454,153 @@ func fromDisk(rec Rec, row Row, formats []string) Row {
 	return indexRow(str(rec, "uid"), folder, ft)
 }
 
-func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []string) Row {
+type attOpts struct {
+	exts     map[string]bool // nil: every extension
+	maxBytes int             // 0: no limit
+	prev     []Row
+}
+
+// fetchAttachments downloads the attachments of one record; one row per file
+// (or one "none" row). Files on disk are kept; files moved or deleted with
+// `sourcelens files` are not downloaded again.
+func (x *ftCtx) fetchAttachments(folder, uid, pmcid string, version int, media []mediaFile, xmlBytes []byte, att *attOpts) []Row {
+	caps := attCaptions(xmlBytes)
+	prev := map[string]Row{}
+	for _, r := range att.prev {
+		if r["file"] != "" {
+			prev[r["file"]] = r
+		}
+	}
+	adir := filepath.Join(folder, "attachments")
+	var rows []Row
+	for _, mf := range media {
+		fname := safeName(mf.name)
+		ext := fileExt(fname)
+		d := describe(mf.name, caps)
+		u := fmt.Sprintf("%s/%s.%d/%s", s3Base, pmcid, version, urlQuote(mf.name))
+		size := ""
+		if mf.size >= 0 {
+			size = strconv.Itoa(mf.size)
+		}
+		row := Row{"uid": uid, "file": fname, "ext": ext, "kind": d.kind, "label": d.label, "caption": d.caption,
+			"bytes": size, "status": "listed", "path": "", "url": u, "checked_on": today(), "reason": ""}
+		old, hasOld := prev[fname]
+		target := filepath.Join(adir, fname)
+		st, statErr := os.Stat(target)
+		switch {
+		case hasOld && (old["status"] == "moved" || old["status"] == "deleted"):
+			row["status"], row["path"], row["reason"] = old["status"], old["path"], old["reason"]
+		case statErr == nil && (mf.size < 0 || st.Size() == int64(mf.size)):
+			row["status"], row["path"], row["bytes"] = "ok", researchRel(target), strconv.FormatInt(st.Size(), 10)
+		case att.exts != nil && !att.exts[ext]:
+			row["reason"] = "extension not selected"
+		case att.maxBytes > 0 && mf.size > att.maxBytes:
+			row["status"], row["reason"] = "skipped", fmt.Sprintf("larger than %d MB", att.maxBytes/1_000_000)
+		default:
+			b := x.getBytes(u, false)
+			if b == nil {
+				row["status"], row["reason"] = "failed", "download failed"
+			} else {
+				_ = os.MkdirAll(adir, 0o755)
+				_ = os.WriteFile(target, b, 0o644)
+				row["status"], row["path"], row["bytes"] = "ok", researchRel(target), strconv.Itoa(len(b))
+			}
+		}
+		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		rows = append(rows, noneRow(uid, "no attachments"))
+	}
+	return rows
+}
+
+// attachmentsOnly fetches the attachments of a record whose text formats are
+// complete on disk: index columns attachments and folder, the rows, and ok
+// false when the PMC bucket could not be read.
+func (f *fetcher) attachmentsOnly(rec Rec, row Row, att *attOpts) (Row, []Row, bool) {
+	x := &ftCtx{f: f, c: f.client()}
+	uid, pmcid := str(rec, "uid"), str(rec, "pmcid")
+	folder := folderFor(rec, row)
+	var m map[string]any
+	failed := false
+	if pmcid != "" {
+		m, failed = x.pmcS3(pmcid)
+	}
+	if failed {
+		return Row{"attachments": "", "folder": ""}, nil, false
+	}
+	var rows []Row
+	if m == nil {
+		reason := "no PMC id"
+		if pmcid != "" {
+			reason = "not in the PMC open-access subset"
+		}
+		rows = []Row{noneRow(uid, reason)}
+	} else {
+		xmlBytes, _ := os.ReadFile(filepath.Join(folder, "paper.jats.xml"))
+		media, _ := m["_media"].([]mediaFile)
+		rows = x.fetchAttachments(folder, uid, pmcid, m["_version"].(int), media, xmlBytes, att)
+	}
+	metaPath := filepath.Join(folder, "metadata.json")
+	if b, err := os.ReadFile(metaPath); err == nil {
+		meta := decodeJSON(b)
+		if meta == nil {
+			meta = map[string]any{}
+		}
+		ft := jmap(meta, "fulltext")
+		if ft == nil {
+			ft = map[string]any{}
+		}
+		ft["attachments"] = attMeta(rows)
+		meta["fulltext"] = ft
+		_ = writeJSON(metaPath, meta)
+	} else {
+		for _, r := range rows {
+			if r["status"] == "ok" {
+				_ = writeJSON(metaPath, omap{{"uid", uid}, {"record", rec}, {"fulltext", omap{{"attachments", attMeta(rows)}}}})
+				break
+			}
+		}
+	}
+	rel := ""
+	if st, err := os.Stat(folder); err == nil && st.IsDir() {
+		rel = researchRel(folder)
+	}
+	return Row{"attachments": attColumn(rows), "folder": rel}, rows, true
+}
+
+func dedupe(xs []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// fetchOne downloads one record: its fulltext_index.csv row and, when att is
+// not nil, its attachment rows (attDone false: attachments not decided now).
+func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []string, att *attOpts) (Row, []Row, bool) {
 	x := &ftCtx{f: f, c: f.client()}
 	uid := str(rec, "uid")
 	folder := folderFor(rec, row)
-	_ = os.MkdirAll(folder, 0o755)
 	files := map[string]any{}
 	tried := []any{}
 	prov := map[string]any{}
+	var notes []string
 	lic, source := "", ""
 	var xmlBytes []byte
-	keep := map[string]bool{}
+	var textFormats []string
 	for _, fm := range formats {
+		if _, ok := formatFiles[fm]; ok {
+			textFormats = append(textFormats, fm)
+		}
+	}
+	keep := map[string]bool{}
+	for _, fm := range textFormats {
 		keep[formatFiles[fm]] = true
 	}
 	src := map[string]bool{}
@@ -390,6 +612,7 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 	tmpPDF := false
 	save := func(name string, data []byte, u, via string) {
 		if name == "paper.pdf" && !keep[name] {
+			_ = os.MkdirAll(folder, 0o755)
 			_ = os.WriteFile(pdfTmp, data, 0o644)
 			tmpPDF = true
 			return
@@ -397,6 +620,7 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 		if !keep[name] {
 			return
 		}
+		_ = os.MkdirAll(folder, 0o755)
 		_ = os.WriteFile(filepath.Join(folder, name), data, 0o644)
 		files[name] = map[string]any{"bytes": len(data), "sha256": sha(data), "url": u, "via": via}
 	}
@@ -404,11 +628,20 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 
 	pmcid := str(rec, "pmcid")
 	s3err := false
+	var pmc map[string]any
 	if pmcid != "" && src["pmc"] {
 		tried = append(tried, "pmc_s3")
 		m, failed := x.pmcS3(pmcid)
 		s3err = failed
-		if m != nil {
+		switch {
+		case failed:
+			notes = append(notes, "PMC bucket could not be read")
+		case m == nil:
+			notes = append(notes, "not in the PMC open-access subset")
+		default:
+			pmc = m
+		}
+		if pmc != nil {
 			p := map[string]any{}
 			for _, k := range []string{"pmcid", "_version", "license_code", "is_pmc_openaccess", "is_manuscript", "is_retracted", "citation"} {
 				p[k] = m[k]
@@ -416,6 +649,7 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 			prov["pmc_s3"] = p
 			lic = orDefault(jstr(m, "license_code"), lic)
 			source = "pmc_s3"
+			n0 := len(files)
 			if u := s3URL(jstr(m, "xml_url")); u != "" {
 				if b := x.getBytes(u, false); b != nil {
 					xmlBytes = b
@@ -432,19 +666,28 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 					save("paper.pdf", b, u, "pmc_s3")
 				}
 			}
+			if len(files) == n0 && xmlBytes == nil {
+				notes = append(notes, "PMC files did not download")
+			}
 		}
+	} else if src["pmc"] {
+		notes = append(notes, "no PMC copy")
 	}
 	doi := str(rec, "doi")
 	if src["biorxiv"] && strings.HasPrefix(doi, "10.1101/") && (xmlBytes == nil || (wantPDF && !havePDF())) {
 		tried = append(tried, "biorxiv")
-		if v := x.biorxiv(doi); v != nil {
+		if v := x.biorxiv(doi); v == nil {
+			notes = append(notes, "not found in the bioRxiv / medRxiv API")
+		} else {
 			server := jstr(v, "_server")
 			prov["biorxiv"] = map[string]any{"server": v["server"], "version": v["version"], "date": v["date"],
 				"license": v["license"], "published": v["published"]}
 			lic = orDefault(lic, jstr(v, "license"))
+			got := false
 			if j := jstr(v, "jatsxml"); xmlBytes == nil && j != "" {
 				if b := x.getBytes(j, false); b != nil && bytes.Contains(b[:min(5000, len(b))], []byte("<article")) {
 					xmlBytes = b
+					got = true
 					source = orDefault(source, server)
 					save("paper.jats.xml", b, j, server)
 				}
@@ -453,8 +696,12 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 			if wantPDF && !havePDF() {
 				if b := x.getBytes(pdf, true); b != nil {
 					save("paper.pdf", b, pdf, server)
+					got = true
 					source = orDefault(source, server)
 				}
+			}
+			if !got && !x.deferred {
+				notes = append(notes, server+" files did not download")
 			}
 		}
 	}
@@ -477,6 +724,8 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 				xmlBytes = r.Body
 				source = orDefault(source, "europepmc")
 				save("paper.jats.xml", r.Body, epmcFT+"/"+ext+"/fullTextXML", "europepmc")
+			} else {
+				notes = append(notes, "no full text in Europe PMC")
 			}
 		}
 	}
@@ -487,13 +736,20 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 			save("paper.pdf", b, u, "arxiv")
 			lic = orDefault(lic, "arXiv (see abstract page for licence)")
 			source = orDefault(source, "arxiv")
+		} else {
+			notes = append(notes, "arXiv PDF did not download")
 		}
 	}
 	// Unpaywall needs a contact address (sourcelens config set contact_email ...)
+	if src["unpaywall"] && wantPDF && !havePDF() && doi != "" && contact() == "" {
+		notes = append(notes, "Unpaywall skipped: no contact email")
+	}
 	if src["unpaywall"] && contact() != "" && wantPDF && !havePDF() && doi != "" {
 		tried = append(tried, "unpaywall")
 		r := x.c.Get("https://api.unpaywall.org/v2/"+escapeDOIPath(doi), reqOpts{params: url.Values{"email": {contact()}}, tries: 3})
-		if r != nil && r.Status == 200 {
+		if r == nil || r.Status != 200 {
+			notes = append(notes, "Unpaywall: DOI unknown or no answer")
+		} else {
 			up := decodeJSON(r.Body)
 			best := jmap(up, "best_oa_location")
 			prov["unpaywall"] = map[string]any{"is_oa": up["is_oa"], "oa_status": up["oa_status"], "best_oa_url": best["url"]}
@@ -513,6 +769,21 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 					break
 				}
 			}
+			if !havePDF() {
+				isOA, _ := up["is_oa"].(bool)
+				switch {
+				case !isOA:
+					notes = append(notes, "Unpaywall: not open access")
+				case len(seen) == 0:
+					notes = append(notes, "Unpaywall: open access as a web page only, no PDF link")
+				default:
+					plural := "s"
+					if len(seen) == 1 {
+						plural = ""
+					}
+					notes = append(notes, fmt.Sprintf("Unpaywall: %d PDF link%s failed (blocked or not a PDF)", len(seen), plural))
+				}
+			}
 		}
 	}
 	// OpenAlex's open-access PDF link (works from any field; no contact address needed)
@@ -523,6 +794,8 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 				save("paper.pdf", b, u, "openalex")
 				lic = orDefault(lic, str(rec, "license"))
 				source = orDefault(source, "openalex")
+			} else {
+				notes = append(notes, "OpenAlex open-access link failed (blocked or not a PDF)")
 			}
 		}
 	}
@@ -556,59 +829,198 @@ func (f *fetcher) fetchOne(rec Rec, row Row, wantPDF bool, formats, sources []st
 	}
 	_ = os.Remove(pdfTmp)
 
+	var oldFT map[string]any
 	if b, err := os.ReadFile(filepath.Join(folder, "metadata.json")); err == nil {
-		old := ymap(jmap(decodeJSON(b), "fulltext")["files"])
-		for k, v := range old {
+		oldFT = jmap(decodeJSON(b), "fulltext")
+		for k, v := range ymap(oldFT["files"]) {
 			if _, ok := files[k]; !ok && fileExists(filepath.Join(folder, k)) {
 				files[k] = v
 			}
 		}
 	}
 	present := map[string]bool{}
-	for f, name := range formatFiles {
+	for fm, name := range formatFiles {
 		if _, ok := files[name]; ok {
-			present[f] = true
+			present[fm] = true
 		}
 	}
 	status := "none"
-	if complete(present, formats) {
+	if complete(present, textFormats) {
 		status = "ok"
 	} else if len(files) > 0 {
 		status = "partial"
 	}
 	if status != "ok" && x.deferred {
 		status = "deferred"
+		notes = append(notes, "bioRxiv / medRxiv rate limit; tried again on the next run")
 	}
-	ft := map[string]any{"status": status, "source": source, "license": lic, "files": files,
-		"fetched_on": time.Now().Format("2006-01-02T15:04:05"), "sources_tried": tried,
-		"formats": sortedCopy(formats), "sources": sortedCopy(sources)}
+	if status == "partial" {
+		var core, missing []string
+		for _, fm := range textFormats {
+			if fm == "md" || fm == "txt" {
+				core = append(core, fm)
+			}
+		}
+		if len(core) == 0 {
+			core = textFormats
+		}
+		for _, fm := range sortedCopy(core) {
+			if !present[fm] {
+				missing = append(missing, fm)
+			}
+		}
+		notes = append([]string{"missing " + strings.Join(missing, ", ")}, notes...)
+	}
+	if status != "ok" && len(notes) == 0 {
+		if len(tried) == 0 {
+			notes = append(notes, "no PMC id, DOI or open-access link to try")
+		} else {
+			notes = append(notes, "no open-access copy found")
+		}
+	}
+	reason := ""
+	if status != "ok" {
+		reason = strings.Join(dedupe(notes), "; ")
+	}
+
+	var attRows []Row
+	attDone := false
+	if att != nil {
+		switch {
+		case pmc != nil:
+			xb := xmlBytes
+			if xb == nil {
+				xb, _ = os.ReadFile(filepath.Join(folder, "paper.jats.xml"))
+			}
+			media, _ := pmc["_media"].([]mediaFile)
+			attRows, attDone = x.fetchAttachments(folder, uid, pmcid, pmc["_version"].(int), media, xb, att), true
+		case !s3err:
+			r := "no PMC id"
+			if pmcid != "" {
+				r = "not in the PMC open-access subset"
+			}
+			attRows, attDone = []Row{noneRow(uid, r)}, true
+		}
+	}
+	hasFiles := len(files) > 0
+	for _, r := range attRows {
+		if r["status"] == "ok" {
+			hasFiles = true
+		}
+	}
+	if st, err := os.Stat(filepath.Join(folder, "attachments")); err == nil && st.IsDir() {
+		hasFiles = true
+	}
+	fetched := time.Now().Format("2006-01-02T15:04:05")
+	ft := map[string]any{"status": status, "reason": reason, "source": source, "license": lic, "files": files,
+		"fetched_on": fetched, "sources_tried": tried, "formats": sortedCopy(formats), "sources": sortedCopy(sources)}
 	// key order as python writes it (nested records keep Go's sorted key order)
-	fto := omap{{"status", status}, {"source", source}, {"license", lic}, {"files", files},
-		{"fetched_on", ft["fetched_on"]}, {"sources_tried", tried}, {"formats", ft["formats"]}, {"sources", ft["sources"]}}
+	fto := omap{{"status", status}, {"reason", reason}, {"source", source}, {"license", lic}, {"files", files},
+		{"fetched_on", fetched}, {"sources_tried", tried}, {"formats", ft["formats"]}, {"sources", ft["sources"]}}
 	for _, k := range []string{"pmc_s3", "biorxiv", "unpaywall", "xml_error"} {
 		if v, ok := prov[k]; ok {
 			ft[k] = v
 			fto = append(fto, okv{k, v})
 		}
 	}
-	for k, v := range prov {
-		if _, ok := ft[k]; !ok {
-			ft[k] = v
-			fto = append(fto, okv{k, v})
+	if attDone {
+		fto = append(fto, okv{"attachments", attMeta(attRows)})
+	} else if old, ok := oldFT["attachments"]; ok && len(jlist(old)) > 0 {
+		fto = append(fto, okv{"attachments", old})
+	}
+	var out Row
+	if hasFiles {
+		catRow := omap{}
+		for _, k := range []string{"tier", "category", "modality", "title", "date"} {
+			catRow = append(catRow, okv{k, row[k]})
 		}
+		_ = writeJSON(filepath.Join(folder, "metadata.json"), omap{{"uid", uid}, {"record", rec}, {"catalogue_row", catRow}, {"fulltext", fto}})
+		out = indexRow(uid, folder, ft)
+	} else {
+		// nothing on disk for this record: no folder, only its index row
+		tidy(folder)
+		out = indexRow(uid, "", ft)
 	}
-	catRow := omap{}
-	for _, k := range []string{"tier", "category", "modality", "title", "date"} {
-		catRow = append(catRow, okv{k, row[k]})
+	if attDone {
+		out["attachments"] = attColumn(attRows)
 	}
-	_ = writeJSON(filepath.Join(folder, "metadata.json"), omap{{"uid", uid}, {"record", rec}, {"catalogue_row", catRow}, {"fulltext", fto}})
-	return indexRow(uid, folder, ft)
+	return out, attRows, attDone
 }
 
 func sortedCopy(xs []string) []string {
 	out := append([]string(nil), xs...)
 	sort.Strings(out)
 	return out
+}
+
+// readUIDsFile: uids from a CSV with a uid (or doi) column, or one uid per line.
+func readUIDsFile(path string) []string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	text := strings.TrimPrefix(string(b), "\ufeff")
+	first, _, _ := strings.Cut(text, "\n")
+	if strings.Contains(first, ",") || strings.TrimSpace(first) == "uid" || strings.TrimSpace(first) == "doi" {
+		rows, cols := readCSV(path)
+		var out []string
+		switch {
+		case contains(cols, "uid"):
+			for _, r := range rows {
+				if r["uid"] != "" {
+					out = append(out, r["uid"])
+				}
+			}
+			return out
+		case contains(cols, "doi"):
+			for _, r := range rows {
+				if d := normDOI(r["doi"]); d != "" {
+					out = append(out, "doi:"+d)
+				}
+			}
+			return out
+		}
+	}
+	var out []string
+	for _, l := range splitLinesPy(text) {
+		if t := strings.TrimSpace(l); t != "" && t != "uid" && t != "doi" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// tidyIndex: records without a file keep no folder; removes the folders
+// earlier versions left behind and gives their rows a reason.
+func tidyIndex(index map[string]Row, order []string) int {
+	removed := 0
+	for _, uid := range order {
+		r := index[uid]
+		if r["status"] == "ok" || r["status"] == "partial" || r["folder"] == "" {
+			continue
+		}
+		folder := researchFile(r["folder"])
+		var tried []string
+		if b, err := os.ReadFile(filepath.Join(folder, "metadata.json")); err == nil {
+			for _, t := range jlist(jmap(decodeJSON(b), "fulltext")["sources_tried"]) {
+				if s, ok := t.(string); ok {
+					tried = append(tried, s)
+				}
+			}
+		}
+		if tidy(folder) || !fileExists(folder) {
+			removed++
+			r["folder"] = ""
+			if r["reason"] == "" {
+				if len(tried) > 0 {
+					r["reason"] = "no open-access copy found (tried: " + strings.Join(tried, ", ") + ")"
+				} else {
+					r["reason"] = "no open-access copy found"
+				}
+			}
+		}
+	}
+	return removed
 }
 
 func stepFulltext(args []string, log *Logger) error {
@@ -619,8 +1031,8 @@ func stepFulltext(args []string, log *Logger) error {
 	formats := splitList(orDefault(o["formats"], "pdf,md,txt,xml"))
 	sources := splitList(orDefault(o["sources"], strings.Join(allFTSources, ",")))
 	for _, f := range formats {
-		if !contains(allFormats, f) {
-			return fmt.Errorf("formats must be within %v", allFormats)
+		if !contains(allFormats, f) && f != "attachments" {
+			return fmt.Errorf("formats must be within %v", append(append([]string(nil), allFormats...), "attachments"))
 		}
 	}
 	for _, s := range sources {
@@ -628,10 +1040,25 @@ func stepFulltext(args []string, log *Logger) error {
 			return fmt.Errorf("sources must be within %v", allFTSources)
 		}
 	}
-	if contains(sources, "unpaywall") && contact() == "" {
+	var textFormats []string
+	for _, f := range formats {
+		if f != "attachments" {
+			textFormats = append(textFormats, f)
+		}
+	}
+	wantAtt := contains(formats, "attachments") && contains(sources, "pmc")
+	var exts map[string]bool
+	for _, e := range splitList(o["attachment-ext"]) {
+		if exts == nil {
+			exts = map[string]bool{}
+		}
+		exts[strings.TrimPrefix(strings.ToLower(e), ".")] = true
+	}
+	maxBytes := max(0, atoiSafe(orDefault(o["max-attachment-mb"], "100"))) * 1_000_000
+	if contains(sources, "unpaywall") && contact() == "" && len(textFormats) > 0 {
 		log.Printf("Unpaywall skipped: no contact email (sourcelens config set contact_email you@example.org)")
 	}
-	if s := pdfToolsStatus(); strings.HasPrefix(s, "unavailable") {
+	if s := pdfToolsStatus(); strings.HasPrefix(s, "unavailable") && len(textFormats) > 0 {
 		log.Printf("PDF to text/Markdown %s; PDFs are kept", s)
 	}
 	rtypes := map[string]bool{}
@@ -652,11 +1079,20 @@ func stepFulltext(args []string, log *Logger) error {
 			sel = append(sel, r)
 		}
 	}
-	if o["uids"] != "" {
-		want := splitList(o["uids"])
+	var explicit map[string]bool
+	if o["uids"] != "" || o["uids-file"] != "" {
+		explicit = map[string]bool{}
+		for _, u := range splitList(o["uids"]) {
+			explicit[u] = true
+		}
+		if o["uids-file"] != "" {
+			for _, u := range readUIDsFile(o["uids-file"]) {
+				explicit[u] = true
+			}
+		}
 		var keep []Row
 		for _, r := range sel {
-			if contains(want, r["uid"]) {
+			if explicit[r["uid"]] {
 				keep = append(keep, r)
 			}
 		}
@@ -693,6 +1129,10 @@ func stepFulltext(args []string, log *Logger) error {
 	for _, r := range idxRows {
 		setIndex(r["uid"], r)
 	}
+	if n := tidyIndex(index, indexOrder); n > 0 {
+		log.Printf("removed %d folders of records without any file (their index rows keep the reason)", n)
+	}
+	attIndex := readAttIndex()
 	statusCounts := func() string {
 		c := newCounter()
 		for _, u := range indexOrder {
@@ -712,16 +1152,17 @@ func stepFulltext(args []string, log *Logger) error {
 		force = true
 	}
 	cutoff := time.Now().AddDate(0, 0, -retryDays).Format("2006-01-02")
-	isAll := len(formats) == len(allFormats)
-	var todo []Row
-	for _, r := range sel {
+	isAll := len(textFormats) == len(allFormats)
+	textDue := func(r Row) bool {
 		prev, ok := index[r["uid"]]
 		switch {
-		case force || o["uids"] != "" || !ok:
-			todo = append(todo, r)
+		case len(textFormats) == 0:
+			return false
+		case force || explicit != nil || !ok:
+			return true
 		case prev["status"] == "partial" || prev["status"] == "deferred" || prev["status"] == "error" ||
 			(prev["status"] == "none" && prev["checked_on"] < cutoff):
-			todo = append(todo, r)
+			return true
 		case prev["status"] == "ok" && prev["checked_on"] < cutoff:
 			have := map[string]bool{}
 			for _, f := range allFormats {
@@ -730,14 +1171,45 @@ func stepFulltext(args []string, log *Logger) error {
 				}
 			}
 			missing := false
-			for _, f := range formats {
+			for _, f := range textFormats {
 				if !have[f] {
 					missing = true
 				}
 			}
-			if !complete(have, formats) || (missing && !isAll) {
-				todo = append(todo, r)
+			return !complete(have, textFormats) || (missing && !isAll)
+		}
+		return false
+	}
+	attDue := func(r Row) bool {
+		if !wantAtt || r["pmcid"] == "" {
+			return false
+		}
+		if explicit != nil {
+			return true
+		}
+		prev := index[r["uid"]]
+		if prev["status"] == "removed" || (prev["status"] == "none" && !textDue(r)) {
+			return false
+		}
+		if prev["attachments"] == "" {
+			return true
+		}
+		for _, a := range attIndex[r["uid"]] {
+			if a["status"] == "failed" {
+				return true
 			}
+		}
+		return false
+	}
+	type item struct {
+		row        Row
+		text, want bool
+	}
+	var todo []item
+	for _, r := range sel {
+		t, a := textDue(r), attDue(r)
+		if t || a {
+			todo = append(todo, item{r, t, a})
 		}
 	}
 	if n := atoiSafe(o["limit"]); n > 0 && len(todo) > n {
@@ -753,33 +1225,50 @@ func stepFulltext(args []string, log *Logger) error {
 
 	f := &fetcher{lim: NewLimiter(time.Second, hostInterval), blocked: map[string]time.Time{}, log: log}
 	type job struct {
-		rec Rec
-		row Row
+		rec       Rec
+		row       Row
+		text      bool
+		att       *attOpts
+		uid       string
+		prevAttCo string
 	}
 	var jobs []job
 	resumed := 0
-	for _, r := range todo {
-		rec := store.Get(r["uid"])
+	for _, it := range todo {
+		uid := it.row["uid"]
+		rec := store.Get(uid)
 		if rec == nil {
 			continue
 		}
-		if !force {
-			if prev := fromDisk(rec, r, formats); prev != nil {
-				setIndex(r["uid"], prev)
+		text := it.text
+		if text && !force {
+			if prev := fromDisk(rec, it.row, textFormats); prev != nil {
+				prev["attachments"] = index[uid]["attachments"]
+				setIndex(uid, prev)
 				resumed++
-				continue
+				text = false
 			}
 		}
-		jobs = append(jobs, job{rec, r})
+		if !text && !it.want {
+			continue
+		}
+		var att *attOpts
+		if it.want {
+			att = &attOpts{exts: exts, maxBytes: maxBytes, prev: attIndex[uid]}
+		}
+		jobs = append(jobs, job{rec, it.row, text, att, uid, index[uid]["attachments"]})
 	}
 	log.Printf("%d already complete on disk; %d to download", resumed, len(jobs))
-	writeIndex := func() {
+	writeIndexes := func() {
 		keys := sortedKeys(index)
 		out := make([]Row, len(keys))
 		for i, k := range keys {
 			out[i] = index[k]
 		}
 		_ = writeCSV(rpath("fulltext", "fulltext_index.csv"), out, indexCols)
+		if wantAtt {
+			_ = writeAttIndex(attIndex)
+		}
 	}
 	var mu sync.Mutex
 	done := 0
@@ -792,21 +1281,53 @@ func stepFulltext(args []string, log *Logger) error {
 			defer wg.Done()
 			for j := range ch {
 				var res Row
+				var attRows []Row
+				var attDone, failed bool
 				func() {
 					defer func() {
 						if e := recover(); e != nil {
-							res = Row{"uid": str(j.rec, "uid"), "status": "error", "checked_on": today(),
+							failed = true
+							res = Row{"uid": j.uid, "status": "error", "reason": "error while downloading", "checked_on": today(),
 								"note": runeCut(fmt.Sprint(e), 300)}
-							log.Printf("error on %s: %v", str(j.rec, "uid"), e)
+							log.Printf("error on %s: %v", j.uid, e)
 						}
 					}()
-					res = f.fetchOne(j.rec, j.row, wantPDF, formats, sources)
+					if j.text {
+						res, attRows, attDone = f.fetchOne(j.rec, j.row, wantPDF, formats, sources, j.att)
+					} else {
+						res, attRows, attDone = f.attachmentsOnly(j.rec, j.row, j.att)
+					}
 				}()
 				mu.Lock()
-				setIndex(str(j.rec, "uid"), res)
+				switch {
+				case failed:
+					if _, ok := index[j.uid]; j.text || !ok {
+						setIndex(j.uid, res)
+					}
+				case j.text:
+					if !attDone {
+						res["attachments"] = j.prevAttCo
+					}
+					setIndex(j.uid, res)
+				default:
+					prev := index[j.uid]
+					if prev == nil {
+						prev = Row{"uid": j.uid}
+					}
+					if res["attachments"] != "" {
+						prev["attachments"] = res["attachments"]
+					}
+					if prev["folder"] == "" && res["folder"] != "" {
+						prev["folder"] = res["folder"]
+					}
+					setIndex(j.uid, prev)
+				}
+				if attDone && len(attRows) > 0 {
+					attIndex[j.uid] = attRows
+				}
 				done++
 				if done%25 == 0 {
-					writeIndex()
+					writeIndexes()
 					log.Printf("  %d/%d %s", done, len(jobs), statusCounts())
 				}
 				mu.Unlock()
@@ -818,7 +1339,7 @@ func stepFulltext(args []string, log *Logger) error {
 	}
 	close(ch)
 	wg.Wait()
-	writeIndex()
+	writeIndexes()
 	log.Printf("done: %s", statusCounts())
 	return nil
 }

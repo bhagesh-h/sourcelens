@@ -193,3 +193,178 @@ def test_long_retry_after_stops_requests_to_that_host():
     finally:
         srv.shutdown()
         agelit.RATE_LIMITED.clear()
+
+
+JATS = b"""<?xml version="1.0"?>
+<article xmlns:xlink="http://www.w3.org/1999/xlink"><body>
+<fig id="f1"><label>Figure 1.</label><caption><title>Clock <italic>accuracy</italic></title>
+<p>Error by age.</p></caption><graphic xlink:href="pone.0123456.g001"/></fig>
+<table-wrap id="t1"><label>Table 2</label><caption><p>Cohorts</p></caption><graphic xlink:href="tab2.gif"/></table-wrap>
+<supplementary-material id="s1"><label>Supplement 1.</label><caption><p>eTable 1. Results</p></caption>
+<media xlink:href="jamanetwopen-s001.xlsx"/></supplementary-material>
+</body></article>"""
+
+
+def test_attachment_captions():
+    from sourcelens.pullliturature import attachments as at
+    caps = at.captions(JATS)
+    assert at.describe("pone.0123456.g001.jpg", caps) == ("figure", "Figure 1.", "Clock accuracy Error by age.")
+    assert at.describe("tab2.gif", caps) == ("table", "Table 2", "Cohorts")
+    assert at.describe("jamanetwopen-s001.xlsx", caps) == ("supplementary", "Supplement 1.", "eTable 1. Results")
+    assert at.describe("other.png", caps) == ("figure", "", "")
+    assert at.describe("data.csv", caps) == ("supplementary", "", "")
+    assert at.safe_name("a b/../c?.xlsx") == "c_.xlsx" and at.safe_name("...") == "file"
+    rows = [{"file": "a.jpg", "ext": "jpg", "status": "ok"}, {"file": "b.xlsx", "ext": "xlsx", "status": "listed"},
+            {"file": "c.jpg", "ext": "jpg", "status": "failed"}]
+    assert at.summary(rows) == "1/3: jpg 2, xlsx 1"
+    assert at.summary([{"file": "", "status": "none"}]) == "0/0" and at.summary([]) == ""
+    assert at.summary_exts("1/3: jpg 2, xlsx 1") == {"jpg", "xlsx"}
+    assert at.human_bytes(512) == "512 B" and at.human_bytes(2048) == "2.0 KB" and at.human_bytes("x") == ""
+
+
+def make_catalogue(tmp_path, monkeypatch):
+    """A catalogue folder with its configuration; the fulltext module pointed at it."""
+    from sourcelens.pullliturature import fetch_fulltext as ft
+    monkeypatch.setenv("SOURCELENS_SETTINGS", str(tmp_path / "settings.yaml"))
+    p = resolve_project("test topic", str(tmp_path / "cat"), True, "2025-01-01")
+    monkeypatch.setattr(ft, "FULLTEXT", p.dir / "fulltext")
+    monkeypatch.setattr(ft, "INDEX", p.dir / "fulltext" / "fulltext_index.csv")
+    return p, ft
+
+
+def test_no_folder_without_files(tmp_path, monkeypatch):
+    p, ft = make_catalogue(tmp_path, monkeypatch)
+    rec = {"uid": "url:example.org/paper", "pub_date": "2025-03-01"}
+    row = {"date": "2025-03-01", "title": "A paper"}
+    folder = ft.folder_for(rec, row)
+    folder.mkdir(parents=True)
+    (folder / "metadata.json").write_text("{}", encoding="utf-8")  # left by an earlier version
+    idx, atts = ft.fetch_one(rec, row, True, ft.ALL_FORMATS, {"pmc", "unpaywall", "openalex"})
+    assert idx["status"] == "none" and idx["reason"] == "no PMC copy" and idx["folder"] == ""
+    assert atts is None and not folder.exists()
+    old = {"uid": "u", "status": "none", "reason": "", "folder": "fulltext/2024/u"}
+    f2 = p.dir / "fulltext" / "2024" / "u"
+    f2.mkdir(parents=True)
+    (f2 / "metadata.json").write_text('{"fulltext": {"sources_tried": ["pmc_s3", "unpaywall"]}}', encoding="utf-8")
+    assert ft.tidy_index({"u": old}) == 1 and not f2.exists()
+    assert old["folder"] == "" and old["reason"] == "no open-access copy found (tried: pmc_s3, unpaywall)"
+    keep = p.dir / "fulltext" / "2024" / "k"
+    keep.mkdir(parents=True)
+    (keep / "paper.pdf").write_bytes(b"%PDF")
+    assert ft.tidy_index({"k": {"uid": "k", "status": "none", "folder": "fulltext/2024/k"}}) == 0 and keep.exists()
+
+
+def test_read_uids_file(tmp_path):
+    from sourcelens.pullliturature.fetch_fulltext import read_uids_file
+    a = tmp_path / "a.csv"
+    a.write_text("date,uid,title\n2025,doi:10.1/x,\"A, b\"\n2025,pmid:1,c\n", encoding="utf-8")
+    b = tmp_path / "b.csv"
+    b.write_text("doi\nhttps://doi.org/10.1234/Y\nnot-a-doi\n", encoding="utf-8")
+    c = tmp_path / "c.txt"
+    c.write_text("uid\ndoi:10.1/z\n\npmid:2\n", encoding="utf-8")
+    assert read_uids_file(str(a)) == ["doi:10.1/x", "pmid:1"]
+    assert read_uids_file(str(b)) == ["doi:10.1234/y"]
+    assert read_uids_file(str(c)) == ["doi:10.1/z", "pmid:2"]
+
+
+DRY = [
+    {"date": "2025-01-02", "uid": "doi:10.1/a", "title": "Clock one", "resource_type": "article", "tier": "core",
+     "fulltext_status": "ok", "attachments": "2/3: jpg 2, xlsx 1", "summary": "DNA methylation clock", "keywords": "aging"},
+    {"date": "2025-02-03", "uid": "doi:10.1/b", "title": "Frailty two", "resource_type": "review", "tier": "related",
+     "fulltext_status": "", "attachments": "0/0", "summary": "frailty index", "keywords": "methylation"},
+    {"date": "2025-03-04", "uid": "doi:10.1/c", "title": "Proteome", "resource_type": "article", "tier": "core",
+     "fulltext_status": "none", "attachments": "", "summary": "proteomic clock", "keywords": ""},
+]
+
+
+def test_query_new_filters():
+    from sourcelens.query import catalog
+
+    def pick(**kw):
+        o = parse_flags([], catalog.FILTER_SPEC, "")
+        for k, v in kw.items():
+            setattr(o, k, v)
+        return [r["uid"] for r in catalog.select(o, [dict(r) for r in DRY])[0]]
+
+    assert pick(summary="methylation") == ["doi:10.1/a", "doi:10.1/b"]  # keywords count too
+    assert pick(summary="^(dna|proteomic)") == ["doi:10.1/a", "doi:10.1/c"]
+    assert pick(ext="XLSX") == ["doi:10.1/a"]
+    assert pick(has_attachments=True) == ["doi:10.1/a"]
+    assert pick(fulltext_status="-,none") == ["doi:10.1/b", "doi:10.1/c"]
+    assert catalog.attachment_count("2/3: jpg 2") == 3 and catalog.attachment_count("") == 0
+
+
+def test_files_move_and_record(tmp_path, monkeypatch, capsys):
+    from sourcelens.buildcatalog.build_progress import COLUMNS
+    from sourcelens.common.agelit import read_csv, write_csv
+    from sourcelens.pullliturature import attachments as at
+    from sourcelens.query import files
+    p, ft = make_catalogue(tmp_path, monkeypatch)
+    folder = p.dir / "fulltext" / "2025" / "10.1_a"
+    (folder / "attachments").mkdir(parents=True)
+    for name, data in (("paper.pdf", b"%PDF-1"), ("paper.md", b"# A"), ("attachments/s1.xlsx", b"xlsx"),
+                       ("attachments/f1.jpg", b"jpg")):
+        (folder / name).write_bytes(data)
+    (folder / "metadata.json").write_text('{"fulltext": {"files": {"paper.pdf": {}, "paper.md": {}}}}', encoding="utf-8")
+    write_csv(p.dir / "progress.csv", [{"uid": "doi:10.1/a", "date": "2025-01-02", "title": "Clock one",
+                                        "resource_type": "article", "tier": "core", "fulltext_status": "ok",
+                                        "fulltext_pdf": "fulltext/2025/10.1_a/paper.pdf",
+                                        "fulltext_md": "fulltext/2025/10.1_a/paper.md", "attachments": "2/2: jpg 1, xlsx 1"}],
+              COLUMNS)
+    write_csv(p.dir / "fulltext" / "fulltext_index.csv", [{"uid": "doi:10.1/a", "status": "ok", "has_pdf": True,
+                                                            "has_md": True, "attachments": "2/2",
+                                                            "folder": "fulltext/2025/10.1_a"}], ft.INDEX_COLUMNS)
+    at.write_index({"doi:10.1/a": [
+        {"uid": "doi:10.1/a", "file": "f1.jpg", "ext": "jpg", "kind": "figure", "label": "Figure 1", "bytes": 3,
+         "status": "ok", "path": "fulltext/2025/10.1_a/attachments/f1.jpg"},
+        {"uid": "doi:10.1/a", "file": "s1.xlsx", "ext": "xlsx", "kind": "supplementary", "caption": "eTable 1",
+         "bytes": 4, "status": "ok", "path": "fulltext/2025/10.1_a/attachments/s1.xlsx"}]})
+    d = ["--dir", str(p.dir)]
+    assert files.run(d + ["--ext", "xlsx,pdf"]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == "2 files (10 B) of 1 matching papers"
+    out = tmp_path / "out"
+    assert files.run(d + ["--name", "etable", "--move-to", str(out)]) == 0
+    assert (out / "10.1_a" / "attachments" / "s1.xlsx").read_bytes() == b"xlsx"
+    assert not (folder / "attachments" / "s1.xlsx").exists()
+    rows = at.read_index()["doi:10.1/a"]
+    assert [r["status"] for r in rows] == ["ok", "moved"] and rows[1]["path"].endswith("/attachments/s1.xlsx")
+    assert files.run(d + ["--kind", "paper", "--delete"]) == 1  # needs --yes
+    assert files.run(d + ["--kind", "paper", "--delete", "--yes"]) == 0
+    idx = read_csv(p.dir / "fulltext" / "fulltext_index.csv")[0]
+    assert idx["status"] == "removed" and idx["reason"] == "deleted by sourcelens files" and idx["attachments"] == "1/2"
+    prog = read_csv(p.dir / "progress.csv")[0]
+    assert prog["fulltext_status"] == "removed" and prog["fulltext_pdf"] == "" and prog["attachments"] == "1/2: jpg 1, xlsx 1"
+    assert files.run(d + ["--status", "all"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1].startswith("supplementary | xlsx | 4 B | moved | s1.xlsx")
+
+
+def test_report_page():
+    import base64
+    import gzip
+    import json
+
+    from sourcelens.buildcatalog import report
+    d = {"meta": {"title": 'run report: "x" <y>'}, "steps": [], "columns": ["uid"], "rows": [["u"]], "attachments": []}
+    html = report.page(d)
+    assert "<title>run report: &quot;x&quot; &lt;y&gt;</title>" in html
+    assert 'src="data:image/png;base64,' in html and "__SL_" not in html
+    blob = html.split('<script id="sl-data" type="application/octet-stream">', 1)[1].split("</script>", 1)[0]
+    assert json.loads(gzip.decompress(base64.b64decode(blob))) == d
+
+
+def test_locks(tmp_path):
+    from sourcelens.common import locks
+    path = tmp_path / "x.lock"
+    with open(path, "w") as a, open(path, "w") as b:
+        assert locks.try_lock(a)
+        assert not locks.try_lock(b)
+        locks.unlock(a)
+        assert locks.try_lock(b)
+
+
+def test_split_positionals():
+    from sourcelens.cli.main import split_positionals
+    spec = {"types": ("", str), "plan": (False, bool), "dir": ("", str)}
+    assert split_positionals(["a.csv", "--types", "pdf", "--plan", "--dir=x"], spec) == \
+        (["a.csv"], ["--types", "pdf", "--plan", "--dir=x"])
+    assert split_positionals(["--plan", "b.csv"], spec) == (["b.csv"], ["--plan"])

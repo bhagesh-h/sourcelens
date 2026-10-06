@@ -31,6 +31,13 @@ const filterHelp = `filters (AND between filters, OR within a comma list)
   --added-since DATE  rows whose added_on >= DATE
   --has-fulltext      only rows with a downloaded Markdown full text
   --fulltext RE       regex searched in the downloaded paper.md / paper.txt
+  --summary RE        regex over the summary (abstract, start of the full text or a
+                      site's description) and the keywords
+  --fulltext-status LIST  ok,partial,none,deferred,error,removed; - for not tried
+  --ext LIST          rows with attachments of these extensions, e.g. xlsx,csv,pptx
+  --has-attachments   only rows with attachments
+  --in FILE           filter this CSV (a dry-run table, a query output) instead of
+                      progress.csv; looked up as given, then in the catalogue and exports/
   --sort KEY          date | cited_by | title | author (default date)
 `
 
@@ -42,6 +49,7 @@ const queryHelp = `sourcelens query [filters] [--limit N] [--out FILE]: filter a
   sourcelens query --fulltext DunedinPACE --type article,preprint
   sourcelens query --doi 10.18632/aging.101414,10.7554/elife.73420
   sourcelens query --title "epigenetic clock" --range 6m --out recent.csv
+  sourcelens query --in reports/dryrun_<stamp>.csv --summary "single.cell" --ext xlsx --out picked.csv
 
 ` + projectHelp + "\n" + filterHelp + `  --limit N           rows printed (default 50; --out gets all)
   --out FILE          CSV of all matching rows; relative paths go to <catalogue>/exports/
@@ -69,8 +77,9 @@ var (
 	filterSpec = []flagSpec{{"text", "", kStr}, {"title", "", kStr}, {"doi", "", kStr}, {"uid", "", kStr},
 		{"from", "", kStr}, {"to", "", kStr}, {"range", "", kStr}, {"tier", "", kStr}, {"type", "", kStr},
 		{"category", "", kStr}, {"modality", "", kStr}, {"entity", "", kStr}, {"species", "", kStr},
-		{"added-since", "", kStr}, {"has-fulltext", "false", kBool}, {"fulltext", "", kStr}, {"sort", "date", kStr},
-		{"topic", "", kStr}, {"dir", "", kStr}}
+		{"added-since", "", kStr}, {"has-fulltext", "false", kBool}, {"fulltext", "", kStr},
+		{"summary", "", kStr}, {"fulltext-status", "", kStr}, {"ext", "", kStr}, {"has-attachments", "false", kBool},
+		{"in", "", kStr}, {"sort", "date", kStr}, {"topic", "", kStr}, {"dir", "", kStr}}
 	sortKeys = []string{"date", "cited_by", "title", "author"}
 	showCols = []string{"date", "resource_type", "tier", "category", "cited_by", "title", "doi", "url"}
 )
@@ -139,6 +148,39 @@ func outPath(p string) string {
 	return filepath.Join(Research, "exports", p)
 }
 
+// inputPath: --in, as given, else in the catalogue, else in its exports/.
+func inputPath(name string) (string, error) {
+	for _, p := range []string{name, filepath.Join(Research, name), filepath.Join(Research, "exports", name)} {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("cannot find %s", name)
+}
+
+// inputRows: rows and columns of --in, or of progress.csv.
+func inputRows(o flagSet) ([]Row, []string, error) {
+	path := rpath("progress.csv")
+	if o["in"] != "" {
+		p, err := inputPath(o["in"])
+		if err != nil {
+			return nil, nil, err
+		}
+		path = p
+	}
+	rows, cols := readCSV(path)
+	return rows, cols, nil
+}
+
+// attachmentCount: files available in an attachments column value ("2/5: ..." -> 5).
+func attachmentCount(v string) int {
+	head, _, _ := strings.Cut(v, ":")
+	if _, n, ok := strings.Cut(head, "/"); ok {
+		return atoiSafe(n)
+	}
+	return 0
+}
+
 func firstAuthorKey(r Row) string {
 	a := pyStrip(strings.SplitN(r["authors"], ",", 2)[0])
 	if a == "" {
@@ -165,7 +207,25 @@ func selectRows(o flagSet, rows []Row) ([]Row, map[string]string, error) {
 		return nil, nil, fmt.Errorf("--sort must be date, cited_by, title or author")
 	}
 	if rows == nil {
-		rows, _ = readCSV(rpath("progress.csv"))
+		var err error
+		if rows, _, err = inputRows(o); err != nil {
+			return nil, nil, err
+		}
+	}
+	srx, err := compileFilter("summary", o["summary"])
+	if err != nil {
+		return nil, nil, err
+	}
+	if srx != nil && len(rows) > 0 {
+		if _, ok := rows[0]["summary"]; !ok {
+			rows = overviewRows(rows)
+		}
+	}
+	exts := map[string]bool{}
+	for _, e := range strings.Split(o["ext"], ",") {
+		if e = pyStrip(e); e != "" {
+			exts[strings.TrimLeft(strings.ToLower(e), ".")] = true
+		}
 	}
 	anyIn := func(value, wanted string) bool {
 		if wanted == "" {
@@ -248,6 +308,26 @@ func selectRows(o flagSet, rows []Row) ([]Row, map[string]string, error) {
 		if o.bool("has-fulltext") && r["fulltext_md"] == "" {
 			continue
 		}
+		if o["fulltext-status"] != "" && !exactIn(orDefault(r["fulltext_status"], "-"), o["fulltext-status"]) {
+			continue
+		}
+		if o.bool("has-attachments") && attachmentCount(r["attachments"]) == 0 {
+			continue
+		}
+		if len(exts) > 0 {
+			hit := false
+			for e := range summaryExts(r["attachments"]) {
+				if exts[e] {
+					hit = true
+				}
+			}
+			if !hit {
+				continue
+			}
+		}
+		if srx != nil && !reSearch(srx, r["summary"]+" "+r["keywords"]) {
+			continue
+		}
 		if trx != nil && !reSearch(trx, r["title"]) {
 			continue
 		}
@@ -301,7 +381,10 @@ func cmdQuery(argv []string) int {
 	if _, err := resolveProject(o["topic"], o["dir"], false, ""); err != nil {
 		return fail(err.Error())
 	}
-	rows, cols := readCSV(rpath("progress.csv"))
+	rows, cols, err := inputRows(o)
+	if err != nil {
+		return fail(err.Error())
+	}
 	out, hits, err := selectRows(o, rows)
 	if err != nil {
 		return fail(err.Error())

@@ -9,7 +9,7 @@
 | arXiv | search, PDFs |
 | OpenAlex | search across all fields, citation counts, exact dates, open-access PDF links |
 | Crossref, DataCite | metadata for DOIs found in reference folders |
-| PMC open-access bucket (AWS) | full texts: JATS XML, text, PDF, licence |
+| PMC open-access bucket (AWS) | full texts: JATS XML, text, PDF, licence; figures and supplementary files |
 | bioRxiv / medRxiv | full texts of preprints, links from preprints to journal versions |
 | Unpaywall | open-access PDFs (needs a contact email) |
 | GitHub, CRAN, Bioconductor, PyPI, Zenodo | repositories and packages |

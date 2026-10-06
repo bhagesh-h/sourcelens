@@ -53,15 +53,17 @@ path = "src/sourcelens/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sourcelens"]
-exclude = ["src/sourcelens/defaults/default.yaml"]
+exclude = ["src/sourcelens/defaults/default.yaml", "src/sourcelens/assets"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "cmd/sourcelens/defaults/default.yaml" = "sourcelens/defaults/default.yaml"
+"cmd/sourcelens/assets" = "sourcelens/assets"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "src/sourcelens",
     "cmd/sourcelens/defaults/default.yaml",
+    "cmd/sourcelens/assets",
     "tests",
     "docs",
     "publish.md",

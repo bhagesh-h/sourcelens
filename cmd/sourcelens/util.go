@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -558,7 +557,7 @@ func strList(r Rec, k string) []string {
 // locks
 // ---------------------------------------------------------------------------
 
-// withLock runs fn while holding an exclusive flock on path.
+// withLock runs fn while holding an exclusive lock on path (lock_unix.go, lock_windows.go).
 func withLock(path string, fn func() error) error {
 	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
@@ -566,10 +565,10 @@ func withLock(path string, fn func() error) error {
 		return err
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockFile(f, true); err != nil {
 		return err
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer unlockFile(f)
 	return fn()
 }
 
@@ -581,7 +580,7 @@ func acquirePipelineLock(label string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockFile(f, false); err != nil {
 		held, _ := os.ReadFile(path)
 		f.Close()
 		return nil, fmt.Errorf("another update is running (%s); try again later", strings.TrimSpace(string(held)))

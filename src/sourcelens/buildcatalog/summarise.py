@@ -154,7 +154,7 @@ def main() -> None:
           f"{sum(1 for r in papers if r['fulltext_md'])}; plain text: {sum(1 for r in papers if r['fulltext_txt'])}.", ""]
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text("\n".join(L), encoding="utf-8")
+    OUT.write_text("\n".join(L), encoding="utf-8", newline="\n")
     log(f"wrote {OUT} ({len(L)} lines); full text {dict(ft)}")
 
 

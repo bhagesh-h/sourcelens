@@ -50,6 +50,7 @@ from sourcelens.common.agelit import (  # noqa: E402
     write_json,
 )
 from sourcelens.common.store import Store  # noqa: E402
+from sourcelens.pullliturature import attachments  # noqa: E402
 
 PROGRESS = RESEARCH / "progress.csv"
 CHANGELOG = RESEARCH / "changelog"
@@ -58,8 +59,8 @@ SUMMARY = RESEARCH / "summary"
 COLUMNS = [
     "added_on", "date", "year", "resource_type", "tier", "category", "modality",
     "entities", "species", "title", "authors", "venue", "doi", "pmid", "pmcid",
-    "url", "code_links", "related", "open_access", "license", "fulltext_status",
-    "fulltext_pdf", "fulltext_md", "fulltext_txt", "metadata_file", "cited_by",
+    "url", "code_links", "related", "open_access", "license", "fulltext_status", "fulltext_reason",
+    "fulltext_pdf", "fulltext_md", "fulltext_txt", "metadata_file", "attachments", "cited_by",
     "details", "matched_groups", "found_by", "local_refs", "status", "uid", "notes", "user_tags",
 ]
 USER_COLUMNS = {"notes", "user_tags"}
@@ -162,7 +163,7 @@ def first_authors(a: str, n: int = 3) -> str:
     return ", ".join(parts[:n]) + (" et al." if len(parts) > n else "")
 
 
-def article_row(rec, ann, groups, found_by, seeds, ft, links, cites) -> dict:
+def article_row(rec, ann, groups, found_by, seeds, ft, links, cites, atts=None) -> dict:
     uid = rec["uid"]
     doi = rec.get("doi") or ""
     url = f"https://doi.org/{doi}" if doi else (
@@ -187,10 +188,11 @@ def article_row(rec, ann, groups, found_by, seeds, ft, links, cites) -> dict:
         "doi": doi, "pmid": rec.get("pmid", ""), "pmcid": rec.get("pmcid", ""), "url": url,
         "code_links": "; ".join(links.get(uid, [])), "related": "",
         "open_access": oa, "license": f.get("license") or rec.get("license", ""),
-        "fulltext_status": f.get("status", ""),
+        "fulltext_status": f.get("status", ""), "fulltext_reason": f.get("reason", ""),
         "fulltext_pdf": fp("paper.pdf", "has_pdf"), "fulltext_md": fp("paper.md", "has_md"),
         "fulltext_txt": fp("paper.txt", "has_txt"),
         "metadata_file": f"{folder}/metadata.json" if folder else "",
+        "attachments": attachments.summary((atts or {}).get(uid, [])),
         "cited_by": cited or "", "matched_groups": "; ".join(sorted(groups)),
         "found_by": "; ".join(sorted(found_by)), "local_refs": seed_info.get("refs", ""),
         "uid": uid,
@@ -242,6 +244,7 @@ def main() -> None:
 
     seeds = load_seeds()
     ft = {r["uid"]: r for r in read_csv(FULLTEXT / "fulltext_index.csv")}
+    atts = attachments.read_index()
     links: dict[str, list] = collections.defaultdict(list)
     for r in read_csv(REPOS / "paper_links.csv"):
         if r["url"] not in links[r["uid"]]:
@@ -270,7 +273,7 @@ def main() -> None:
         if "registry_origin" in roles:
             # the paper that introduced a registry entry is development work by definition
             ann = {**ann, "category": clf.origin_category}
-        row = article_row(rec, ann, groups.get(uid, set()), fb, seeds, ft, links, cites)
+        row = article_row(rec, ann, groups.get(uid, set()), fb, seeds, ft, links, cites, atts)
         # the indexes give some records only a year (stored YYYY-01-01);
         # OpenAlex's exact date replaces it when it falls in the same year
         oa_date = openalex.get(uid, {}).get("publication_date", "")

@@ -11,36 +11,46 @@ retry --help
 query --help
 export --help
 status --help
+download --help
+files --help
+report --help
 config --help
 list --help
 sources
 config
 list
-update --dry-run
-update --dry-run --range 1y --types papers
-update --dry-run --range 6m --types papers,md
-update --dry-run --from 2020 --to 2022-06
-update --dry-run --types pdf,md --sources pmc,unpaywall --range 2y
-update --dry-run --types repo,website
-update --dry-run --types md --paper-types preprint --range 1m
-update --dry-run --sources literature --scope broad
-update --dry-run --sources pubmed,arxiv --stop-on-error --parallel 2 --workers 4
-"CRISPR base editing" --dry-run
-"\"base editing\", prime editing OR PE" --dry-run --range 2y
-update --dry-run --topic "aging clocks and biomarkers"
-update --dry-run --sources foo
-update --dry-run --types movies
-update --dry-run --paper-types poems
-update --dry-run --range 5x
-update --dry-run --from 2024-13
-update --dry-run --workers abc
-update --dry-run --bogus
-update --dry-run --scope wide
-update stray --dry-run
-update --dry-run --topic ""
+update --plan
+update --plan --range 1y --types papers
+update --plan --range 6m --types papers,md
+update --plan --from 2020 --to 2022-06
+update --plan --types pdf,md --sources pmc,unpaywall --range 2y
+update --plan --types repo,website
+update --plan --types md --paper-types preprint --range 1m
+update --plan --sources literature --scope broad
+update --plan --sources pubmed,arxiv --stop-on-error --parallel 2 --workers 4
+"CRISPR base editing" --plan
+"\"base editing\", prime editing OR PE" --plan --range 2y
+update --plan --topic "aging clocks and biomarkers"
+update --plan --sources foo
+update --plan --types movies
+update --plan --paper-types poems
+update --plan --range 5x
+update --plan --from 2024-13
+update --plan --workers abc
+update --plan --bogus
+update --plan --scope wide
+update stray --plan
+update --plan --topic ""
+retry --plan
+retry --plan --status none --types md --sources pmc
+retry --plan --types gif
 retry --dry-run
-retry --dry-run --status none --types md --sources pmc
-retry --dry-run --types gif
+retry --plan --types attachments --ext pptx
+update --plan --types attachments --ext xlsx,.CSV --max-attachment-mb 20
+update --plan --types files --range 1m
+download --plan
+download --plan no-such-file.csv
+download --plan a.csv b.csv
 status
 status --topic "CRISPR base editing"
 query --text GrimAge --from 2022 --tier core --limit 20
@@ -58,6 +68,16 @@ query --sort size
 query --limit -3 --from 2026-09-20
 query --text GrimAge --from 2025 --out parity_{X}/q.csv --limit 0
 query --topic "no such topic"
+query --fulltext-status none --from 2026-09 --limit 5
+query --has-attachments --limit 3
+query --summary "DunedinPACE" --from 2026-06 --limit 5
+query --summary "(unclosed"
+query --in no-such.csv
+files --ext pdf --range 1m --limit 3
+files --kind figure --limit 3
+files --status all --ext xlsx --limit 3
+files --kind movies
+files --copy-to x --delete
 export --doi 10.18632/aging.101414,10.7554/elife.73420
 export --title "GrimAge|DunedinPACE" --range 2y --format VAN,AMA --limit 30
 export --from 2025-01 --to 2025-03 --tier core --format APA,MLA,CHI,HAR,IEE,NAT
@@ -71,4 +91,8 @@ export --from 2024 --tier landmark --format CSL --out parity_{X}/landmark_single
 "graph neural networks, GNN" --dir {W}/proj_{X} --sources local --types papers --heartbeat 0
 status --dir {W}/proj_{X}
 query --dir {W}/proj_{X}
+"graph neural networks, GNN" --dir {W}/proj_{X} --sources local --dry-run --heartbeat 0
+query --dir {W}/proj_{X} --summary "graph|neural"
+files --dir {W}/proj_{X}
+report --dir {W}/proj_{X}
 test

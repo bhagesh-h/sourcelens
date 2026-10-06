@@ -14,6 +14,10 @@ with OR.
   --tier --type --category        exact values
   --modality --entity --species   substrings
   --added-since DATE, --has-fulltext, --fulltext RE (in the downloaded md/txt)
+  --summary RE     regex over the summary (abstract, start of the full text, or a
+                   site's description) and keywords
+  --fulltext-status LIST, --ext LIST (attachment extensions), --has-attachments
+  --in FILE        a CSV to filter instead of progress.csv (a dry-run table, a query output)
   --sort date|cited_by|title|author   (cited_by: descending)
 """
 
@@ -45,6 +49,8 @@ FILTER_SPEC = {"text": ("", str), "title": ("", str), "doi": ("", str), "uid": (
                "from": ("", str), "to": ("", str), "range": ("", str), "tier": ("", str), "type": ("", str),
                "category": ("", str), "modality": ("", str), "entity": ("", str), "species": ("", str),
                "added-since": ("", str), "has-fulltext": (False, bool), "fulltext": ("", str),
+               "summary": ("", str), "fulltext-status": ("", str), "ext": ("", str),
+               "has-attachments": (False, bool), "in": ("", str),
                "sort": ("date", str), "topic": ("", str), "dir": ("", str)}
 
 PROJECT_HELP = """catalogue
@@ -70,6 +76,13 @@ FILTER_HELP = """filters (AND between filters, OR within a comma list)
   --added-since DATE  rows whose added_on >= DATE
   --has-fulltext      only rows with a downloaded Markdown full text
   --fulltext RE       regex searched in the downloaded paper.md / paper.txt
+  --summary RE        regex over the summary (abstract, start of the full text or a
+                      site's description) and the keywords
+  --fulltext-status LIST  ok,partial,none,deferred,error,removed; - for not tried
+  --ext LIST          rows with attachments of these extensions, e.g. xlsx,csv,pptx
+  --has-attachments   only rows with attachments
+  --in FILE           filter this CSV (a dry-run table, a query output) instead of
+                      progress.csv; looked up as given, then in the catalogue and exports/
   --sort KEY          date | cited_by | title | author (default date)
 """
 
@@ -118,6 +131,34 @@ def first_author_key(r: dict) -> str:
     return (a.split(" ")[0] if a else r.get("title", "")).lower()
 
 
+def input_path(name: str) -> Path:
+    """--in: as given, else in the catalogue, else in its exports/."""
+    for p in (Path(name), agelit.RESEARCH / name, exports_path() / name):
+        if p.is_file():
+            return p
+    raise ValueError(f"cannot find {name}")
+
+
+def input_rows(o) -> tuple[list[dict], list[str]]:
+    """(rows, columns) of --in, or of progress.csv."""
+    path = input_path(getattr(o, "in")) if getattr(o, "in", "") else progress_path()
+    rows = read_csv(path)
+    if rows:
+        return rows, list(rows[0].keys())
+    try:
+        with open(path, encoding="utf-8") as fh:
+            header = fh.readline().strip()
+    except OSError:
+        header = ""
+    return rows, [c for c in header.split(",") if c]
+
+
+def attachment_count(value: str) -> int:
+    """Files available in an attachments column value ("2/5: ..." -> 5)."""
+    head = (value or "").split(":", 1)[0]
+    return _int(head.split("/", 1)[1]) if "/" in head else 0
+
+
 def _compile(flag: str, pattern: str):
     if not pattern:
         return None
@@ -134,7 +175,13 @@ def select(o, rows: list[dict] | None = None) -> tuple[list[dict], dict]:
     """
     if o.sort not in SORTS:
         raise ValueError("--sort must be date, cited_by, title or author")
-    rows = read_csv(progress_path()) if rows is None else rows
+    rows = input_rows(o)[0] if rows is None else rows
+    srx = _compile("summary", getattr(o, "summary", ""))
+    if srx and rows and "summary" not in rows[0]:
+        from sourcelens.buildcatalog import overview
+        rows = overview.rows(rows)
+    exts = {e.strip().lower().lstrip(".") for e in (getattr(o, "ext", "") or "").split(",") if e.strip()}
+    from sourcelens.pullliturature.attachments import summary_exts
 
     def any_in(value: str, wanted: str) -> bool:
         return not wanted or any(w.strip().lower() in value.lower() for w in wanted.split(","))
@@ -165,6 +212,14 @@ def select(o, rows: list[dict] | None = None) -> tuple[list[dict], dict]:
         if o.added_since and (r.get("added_on") or "") < o.added_since:
             continue
         if o.has_fulltext and not r.get("fulltext_md"):
+            continue
+        if getattr(o, "fulltext_status", "") and not exact_in(r.get("fulltext_status") or "-", o.fulltext_status):
+            continue
+        if getattr(o, "has_attachments", False) and attachment_count(r.get("attachments", "")) == 0:
+            continue
+        if exts and not exts & summary_exts(r.get("attachments", "")):
+            continue
+        if srx and not srx.search(" ".join([r.get("summary") or "", r.get("keywords") or ""])):
             continue
         if trx and not trx.search(r.get("title") or ""):
             continue

@@ -48,9 +48,20 @@ Legend: `[x]` done, `[ ]` open
 - [x] Release binaries without the version in the file name; logo without the black rim
 - [x] Progress bar in the terminal; long rate-limit waits (OpenAlex daily limit) end the step instead of stalling; clean Ctrl+C
 
+### 1.1 (unreleased), 2026-10-06
+- [x] Dry run: metadata only, `reports/dryrun_<stamp>.csv` with summaries and what is pending; old dry run is `--plan`
+- [x] `query --in` a dry-run table; `--summary`, `--fulltext-status`, `--ext`, `--has-attachments`; `download FILE`
+- [x] No folder for papers without files; reasons in the indexes and `progress.csv`; old empty folders tidied
+- [x] Attachments (figures, tables, supplementary files) from the PMC bucket, with captions; `--ext`, `--max-attachment-mb`
+- [x] `sourcelens files`: list, copy, move, delete by extension, name, kind, status or paper
+- [x] Run report `reports/runreport_<stamp>.html` after every run; `sourcelens report`
+- [x] macOS universal binary; Windows binaries; `install.sh`, `install.ps1`; CI and release tests on Linux, macOS and Windows
+
 ## Open
 
 - [ ] Enable GitHub Pages (Settings > Pages > Source: GitHub Actions)
+- [ ] Release 1.1.0 (needs approval to tag)
+- [ ] Attachments of preprints and non-PMC papers (bioRxiv supplementary pages, publisher sites)
 - [ ] Go: PDF to Markdown closer to pymupdf4llm (headings, tables)
 - [ ] Ordered JSON for records in Go, so `records.jsonl.gz` is byte-identical between implementations (content already is)
 - [ ] Parity cases that run `update` and `retry` against network sources on a sandbox catalogue

@@ -1,11 +1,11 @@
 # Install
 
-sourcelens runs on Linux and macOS. There are two implementations of the same
-command, with the same options and output. Install one of them.
+sourcelens runs on Linux, macOS and Windows. There are two implementations of
+the same command, with the same options and output. Install one of them.
 
 ## Python package
 
-Python 3.10 or newer:
+Python 3.10 or newer, on any system:
 
 ```bash
 pip install sourcelens            # or: pipx install sourcelens
@@ -14,30 +14,52 @@ pip install "sourcelens[pdf]"     # adds PyMuPDF for better PDF to Markdown conv
 
 ## Go binary
 
-A single static file of about 8 MB, with no dependencies. Every
-[release](https://github.com/bhagesh-h/sourcelens/releases/latest) has one per
-system:
+A single file of about 8 MB, with no dependencies. The installers pick the
+right one for the system and put it on your `PATH`.
+
+Linux and macOS (into `~/.local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bhagesh-h/sourcelens/main/install.sh | sh
+```
+
+Windows, in PowerShell (into `%LOCALAPPDATA%\sourcelens`, added to your PATH):
+
+```powershell
+irm https://raw.githubusercontent.com/bhagesh-h/sourcelens/main/install.ps1 | iex
+```
+
+Or download the file yourself from the
+[latest release](https://github.com/bhagesh-h/sourcelens/releases/latest):
 
 | system | file |
 |---|---|
 | Linux, x86-64 | `sourcelens_linux_amd64` |
 | Linux, ARM64 | `sourcelens_linux_arm64` |
-| macOS, Apple silicon | `sourcelens_darwin_arm64` |
-| macOS, Intel | `sourcelens_darwin_amd64` |
-
-Download it, make it executable and put it in a folder on your `PATH`:
+| macOS, Apple silicon and Intel | `sourcelens_macos` (one file for both) |
+| Windows, x86-64 | `sourcelens_windows_amd64.exe` |
+| Windows, ARM64 | `sourcelens_windows_arm64.exe` |
 
 ```bash
-curl -fLo sourcelens https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_linux_amd64
+curl -fLo sourcelens https://github.com/bhagesh-h/sourcelens/releases/latest/download/sourcelens_macos
 chmod +x sourcelens
 mv sourcelens ~/.local/bin/
 ```
 
-The binaries are not signed. If macOS refuses to open a file downloaded in a
-browser, run `xattr -d com.apple.quarantine sourcelens` once. Files
-downloaded with `curl` are not affected.
+On Windows, rename the file to `sourcelens.exe` and put it in a folder on
+your PATH. `SHA256SUMS` in each release holds the checksums.
 
-With Go 1.23 or newer:
+macOS:
+
+- `sourcelens_macos` runs natively on Apple silicon and on Intel Macs.
+  (Releases up to 1.0.0 had a separate file per processor; the Intel one
+  stops with `zsh: bad CPU type in executable` on Apple silicon without
+  Rosetta. The `sourcelens_darwin_*` names now hold the same universal file.)
+- The binaries are not signed. If macOS refuses to open a file downloaded in
+  a browser, run `xattr -d com.apple.quarantine sourcelens` once. Files
+  downloaded with `curl` or the installer are not affected.
+
+With Go 1.23 or newer, on any system:
 
 ```bash
 go install github.com/bhagesh-h/sourcelens/cmd/sourcelens@latest
@@ -55,7 +77,8 @@ folder mounted at `/data`.
 
 ## Optional tools
 
-- `poppler-utils` (`apt install poppler-utils`, `brew install poppler`)
+- `poppler-utils` (`apt install poppler-utils`, `brew install poppler`; on
+  Windows the poppler release for Windows, with its `bin` folder on the PATH)
   converts PDFs to text and Markdown. The Go binary needs it for that; the
   Python package uses it when PyMuPDF is not installed.
 - `gh`, the GitHub CLI: when it is logged in, sourcelens uses its token for

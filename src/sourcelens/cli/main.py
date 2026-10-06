@@ -70,15 +70,18 @@ TYPES = [
     ("md", "full-text Markdown"),
     ("txt", "full-text plain text"),
     ("xml", "full-text source XML (JATS)"),
+    ("attachments", "figures and supplementary files (spreadsheets, slides, documents) of open-access papers"),
     ("repo", "code repositories and software packages"),
     ("website", "websites, databases, web calculators"),
 ]
 TYPE_GROUPS = {"fulltext": ["pdf", "md", "txt", "xml"], "repos": ["repo"], "repository": ["repo"],
                "package": ["repo"], "packages": ["repo"], "websites": ["website"],
-               "paper": ["papers"], "metadata": ["papers"]}
+               "paper": ["papers"], "metadata": ["papers"], "attachment": ["attachments"],
+               "files": ["pdf", "md", "txt", "xml", "attachments"]}
 PAPER_TYPES = ["article", "review", "preprint", "report", "thesis", "conference paper", "book chapter"]
 PAPER_SET = set(PAPER_TYPES)
-FT_FORMATS = ["pdf", "md", "txt", "xml"]
+FT_FORMATS = ["pdf", "md", "txt", "xml", "attachments"]
+METADATA_TYPES = ["papers", "repo", "website"]  # what a dry run fetches
 FT_SOURCES = ["pmc", "biorxiv", "europepmc", "arxiv", "openalex", "unpaywall"]
 REPO_SOURCES = ["github", "cran", "bioconductor", "pypi", "zenodo"]
 SEARCH_SOURCES = ["pubmed", "europepmc", "arxiv", "openalex"]
@@ -100,6 +103,7 @@ STEPS = {
     "repositories": "sourcelens.pullrepos.build_repos",
     "websites": "sourcelens.websites.build_websites",
     "summary": "sourcelens.buildcatalog.summarise",
+    "dryrun": "sourcelens.buildcatalog.dryrun",
 }
 
 MAIN_HELP = """sourcelens {version}: collect the latest research on any topic
@@ -110,9 +114,12 @@ usage
 
 commands
   update    search, download and rebuild a catalogue (the default topic without --topic)
+  download  download the full texts and attachments of the rows in a CSV (a filtered dry run)
   retry     download again the full texts that were deferred, partial or failed
-  query     filter a catalogue
+  query     filter a catalogue or a dry-run table
+  files     list, copy, move or delete downloaded files by extension, name or paper
   export    write catalogue entries as references (APA AMA MLA CHI HAR VAN IEE NAT BIB RIS ENW CSL)
+  report    write the run report (searchable HTML) of a catalogue now
   status    size, full-text coverage, last runs and failures of a catalogue
   list      the catalogues in the output folder
   config    show or change the settings of this machine (output folder, contact email, keys)
@@ -124,6 +131,9 @@ examples
   sourcelens "CRISPR base editing"                 last 12 months, every source
   sourcelens "graph neural networks" --range 3y    a longer window
   sourcelens update                                the default topic
+  sourcelens "CRISPR base editing" --dry-run       metadata and a table of what is there; no downloads
+  sourcelens query --in reports/dryrun_<stamp>.csv --summary "off-target" --out picked.csv
+  sourcelens download exports/picked.csv           download only the picked rows
   sourcelens query --topic "CRISPR base editing" --range 1m
   sourcelens export --topic "CRISPR base editing" --format BIB --out crispr.bib
 
@@ -146,25 +156,35 @@ UPDATE_HELP = """sourcelens update [options]: search, download and rebuild a cat
   sourcelens update --from 2020 --to 2022-06        exact window (year, month or day)
   sourcelens update --types pdf,md --sources pmc,unpaywall --range 2y
   sourcelens update --types repo,website            repositories, packages, websites only
-  sourcelens update --sources pubmed,arxiv --dry-run
+  sourcelens update --dry-run                       metadata only, then a table of what could be downloaded
+  sourcelens update --types attachments --ext xlsx,csv,pptx   spreadsheets and slides of open papers
+  sourcelens update --sources pubmed,arxiv --plan
 
 """ + PROJECT_HELP + """
 options
   --sources LIST      sources or groups (default all; see: sourcelens sources)
-  --types LIST        all | papers,pdf,md,txt,xml,repo,website (default all)
+  --types LIST        all | papers,pdf,md,txt,xml,attachments,repo,website (default all)
   --paper-types LIST  paper types to download full texts for (default all)
   --range SPAN        span back from --to: 1d 7d 2w 1m 6m 1y 2y 10y
   --from WHEN         YYYY, YYYY-MM, YYYY-MM-DD, today or a span (2y)
   --to WHEN           YYYY, YYYY-MM, YYYY-MM-DD or today (default today)
   --scope S           search groups: focused | broad | all (default all)
   --tiers LIST        catalogue tiers for full texts (default landmark,core,related)
+  --ext LIST          attachment file extensions to download, e.g. xlsx,csv,pptx (default all)
+  --max-attachment-mb N   larger attachments are listed but not downloaded (default 100, 0: no limit)
   --workers N         parallel full-text downloads (default 12)
   --parallel N        steps run at the same time within a stage (default 5)
   --min-stars N       GitHub search hits need this many stars (default 3)
   --heartbeat SEC     progress lines every SEC seconds when the output is not a
                       terminal; a terminal shows a progress bar (default 120, 0: none)
   --stop-on-error     stop after the first failed stage
-  --dry-run           print the plan and a full-text estimate, then exit
+  --dry-run           search and fetch metadata only, download nothing, and write
+                      reports/dryrun_<stamp>.csv: every row with its summary and what
+                      could be downloaded; filter it with query --in, then download
+  --plan              print the plan and a full-text estimate, then exit
+
+Every run writes reports/runreport_<stamp>.html: a single page with the run's
+numbers and a searchable, filterable table of the catalogue.
 
 A range limits the searches (publication date), the full-text downloads
 (publication date) and the GitHub search (creation date). It never removes
@@ -179,10 +199,37 @@ was deferred (rate limit), partial or failed, then rebuild
 """ + PROJECT_HELP + """
 options
   --status LIST   last full-text statuses to try again (default deferred,partial,error)
-  --types LIST    formats to keep: pdf,md,txt,xml (default all four)
+  --types LIST    formats to keep: pdf,md,txt,xml,attachments (default all)
   --sources LIST  full-text sources (default pmc,biorxiv,europepmc,arxiv,openalex,unpaywall)
+  --ext LIST      attachment file extensions to download (default all)
   --workers N     parallel downloads (default 12)
-  --dry-run       count the records and exit
+  --plan          count the records and exit
+"""
+
+DOWNLOAD_HELP = """sourcelens download FILE [options]: download the full texts and attachments
+of the rows in FILE, then rebuild
+
+FILE is a CSV with a uid or doi column: a dry-run table filtered with
+sourcelens query --in ... --out FILE, or any query output. Relative paths are
+looked up in the current folder, then in the catalogue and its exports/.
+
+  sourcelens "CRISPR base editing" --dry-run
+  sourcelens query --topic "CRISPR base editing" --in reports/dryrun_<stamp>.csv --summary prime --out prime.csv
+  sourcelens download --topic "CRISPR base editing" exports/prime.csv
+  sourcelens download picked.csv --types attachments --ext xlsx,csv
+
+""" + PROJECT_HELP + """
+options
+  --types LIST    formats: pdf,md,txt,xml,attachments (default all)
+  --sources LIST  full-text sources (default pmc,biorxiv,europepmc,arxiv,openalex,unpaywall)
+  --ext LIST      attachment file extensions to download (default all)
+  --max-attachment-mb N   larger attachments are listed but not downloaded (default 100, 0: no limit)
+  --workers N     parallel downloads (default 12)
+  --plan          count the rows and exit
+"""
+
+REPORT_HELP = """sourcelens report [--topic TEXT | --dir DIR]: write reports/runreport_<stamp>.html
+for the catalogue as it is now (every update, retry, download and dry run writes one too)
 """
 
 STATUS_HELP = """sourcelens status [--topic TEXT | --dir DIR]: size, full-text coverage, last
@@ -231,6 +278,38 @@ def set_status(line: str) -> None:
         sys.stdout.flush()
 
 
+def setup_console() -> None:
+    """UTF-8 output on every platform (a Windows console or file would otherwise use the local code page)."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if (stream.encoding or "").lower().replace("-", "") != "utf8":
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
+def enable_ansi() -> bool:
+    """Escape sequences for the progress bar: always on Linux and macOS, switched on in a Windows console."""
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except (AttributeError, OSError):
+        return False
+
+
+def write_text(path: Path, text: str) -> None:
+    """A text file with "\n" line ends on every platform."""
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+
+
 def read_rows(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -276,6 +355,8 @@ def config_search_sources() -> list[str]:
 
 def plan(o) -> list[list[Step]]:
     src, types = o.sources, o.types
+    if getattr(o, "dry_run", False):
+        types = [t for t in types if t in METADATA_TYPES]
     papers = "papers" in types
 
     def search(name: str) -> bool:
@@ -311,7 +392,8 @@ def plan(o) -> list[list[Step]]:
         s3.append(Step("preprint-links"))
     if formats and fts:
         s3.append(Step("fulltext", "--formats", ",".join(formats), "--sources", ",".join(fts),
-                       "--types", ",".join(o.paper_types), "--tiers", o.tiers, "--workers", str(o.workers)))
+                       "--types", ",".join(o.paper_types), "--tiers", o.tiers, "--workers", str(o.workers),
+                       *attachment_args(o, formats)))
     stages.append(s3)
     if s3:
         stages.append([Step("catalogue-2")])
@@ -326,7 +408,32 @@ def plan(o) -> list[list[Step]]:
     if s5:
         stages.append([Step("catalogue-3")])
     stages.append([Step("summary")])
+    if getattr(o, "dry_run", False):
+        stages.append([Step("dryrun", "--stamp", o.stamp)])
     return [s for s in stages if s]
+
+
+def attachment_args(o, formats: list[str]) -> list[str]:
+    """--attachment-ext / --max-attachment-mb for the fulltext step, when attachments are asked for."""
+    if "attachments" not in formats:
+        return []
+    out = []
+    if getattr(o, "ext", ""):
+        out += ["--attachment-ext", ",".join(e.strip().lower().lstrip(".") for e in o.ext.split(",") if e.strip())]
+    mb = getattr(o, "max_attachment_mb", 100)
+    if mb != 100:
+        out += ["--max-attachment-mb", str(mb)]
+    return out
+
+
+def run_stamp(t: dt.datetime) -> str:
+    """The stamp of a run's reports: YYYY_MM_DD_HH_MM_SS."""
+    return t.strftime("%Y_%m_%d_%H_%M_%S")
+
+
+def command_line() -> str:
+    import shlex
+    return "sourcelens " + " ".join(shlex.quote(a) for a in sys.argv[1:])
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +480,7 @@ def progress_line(done: int, total: int, t0: float, active: list[tuple[str, Path
 def run_step(step: Step, log: Path, env: dict) -> tuple[Step, int, float, Path]:
     t0 = time.time()
     say(f"start  {step.name:<15} {step}")
-    with open(log, "w") as fh:
+    with open(log, "w", encoding="utf-8") as fh:
         rc = subprocess.call([sys.executable, "-m", "sourcelens", "__step", step.kind, *step.args],
                              stdout=fh, stderr=subprocess.STDOUT, cwd=agelit.RESEARCH, env=env)
     dur = time.time() - t0
@@ -381,20 +488,24 @@ def run_step(step: Step, log: Path, env: dict) -> tuple[Step, int, float, Path]:
     return step, rc, dur, log
 
 
-def run_plan(stages: list[list[Step]], o, label: str) -> int:
-    stamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    logdir = rpath("logs", f"cli_{stamp}")
+def log_dir(started: dt.datetime) -> Path:
+    return rpath("logs", f"cli_{started:%Y-%m-%d_%H%M%S}")
+
+
+def run_plan(stages: list[list[Step]], o, label: str, started: dt.datetime | None = None) -> int:
+    logdir = log_dir(started or dt.datetime.now())
     logdir.mkdir(parents=True, exist_ok=True)
     lines = [f"command {label}", f"version {__version__}", f"window {o.start or 'config start'} .. {o.end or 'today'}",
              f"sources {','.join(o.sources)}", f"types {','.join(o.types)}",
              f"paper-types {','.join(o.paper_types)}"]
     lines += [f"stage {i}: " + " | ".join(str(s) for s in st) for i, st in enumerate(stages, 1)]
-    (logdir / "plan.txt").write_text("\n".join(lines) + "\n")
+    write_text(logdir / "plan.txt", "\n".join(lines) + "\n")
     # the configuration this run used, kept with its logs
     if agelit.CONFIG_FILE.is_file():
         (logdir / "sourcelens.yaml").write_bytes(agelit.CONFIG_FILE.read_bytes())
     say(f"logs in {logdir}")
     env = dict(os.environ)
+    env["PYTHONUTF8"] = "1"  # steps read and write UTF-8 on every platform
     if o.start or o.end:
         env["SOURCELENS_SEARCH_START"] = o.start or agelit.query_window()[0]
         env["SOURCELENS_SEARCH_END"] = o.end or dt.date.today().isoformat()
@@ -406,7 +517,7 @@ def run_plan(stages: list[list[Step]], o, label: str) -> int:
     stop = threading.Event()
     t_all = time.time()
     # a terminal gets one progress bar line; a log file gets heartbeat lines
-    bar = o.heartbeat > 0 and sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+    bar = o.heartbeat > 0 and sys.stdout.isatty() and os.environ.get("TERM") != "dumb" and enable_ansi()
 
     def heartbeat():
         while not stop.wait(o.heartbeat):
@@ -466,7 +577,7 @@ def run_plan(stages: list[list[Step]], o, label: str) -> int:
         if bar and ticker:
             ticker.join(timeout=5)
             set_status("")
-    (logdir / "summary.txt").write_text("".join(
+    write_text(logdir / "summary.txt", "".join(
         f"{s.name}\trc={rc}\t{dur / 60:.1f} min\t{log.name}\n" for s, rc, dur, log in results))
     say(f"finished in {(time.time() - t_all) / 60:.1f} min")
     today = dt.date.today().isoformat()
@@ -528,7 +639,7 @@ def cmd_update(argv: list[str]) -> int:
             "range": ("", str), "from": ("", str), "to": ("", str), "scope": ("all", str),
             "tiers": ("landmark,core,related", str), "workers": (12, int), "parallel": (5, int),
             "min-stars": (3, int), "heartbeat": (120, int), "stop-on-error": (False, bool),
-            "dry-run": (False, bool)}
+            "dry-run": (False, bool), "plan": (False, bool), "ext": ("", str), "max-attachment-mb": (100, int)}
     try:
         o = parse_flags(argv, spec, UPDATE_HELP)
         o.sources = expand(o.sources, [s for s, _ in SOURCES], SOURCE_GROUPS, "source")
@@ -545,17 +656,17 @@ def cmd_update(argv: list[str]) -> int:
     except ValueError as exc:
         return fail(str(exc))
     try:
-        p = resolve_project(o.topic, o.dir, not o.dry_run, lo)
+        p = resolve_project(o.topic, o.dir, not o.plan, lo)
     except ProjectError as exc:
-        if o.dry_run and not exc.project.config.is_file():
+        if o.plan and not exc.project.config.is_file():
             t = o.topic or default_topic()
-            print(f"sourcelens update (dry run)\n  catalogue: {exc.project.dir} (not created yet)\n"
+            print(f"sourcelens update (plan)\n  catalogue: {exc.project.dir} (not created yet)\n"
                   f"  topic    : {t}\n  terms    : {' | '.join(parse_topic(t))}")
             return 0
         return fail(str(exc))
     if p.created:
         say(f'new catalogue for "{p.topic}" in {p.dir}')
-    if not o.dry_run and extend_start(p, lo):
+    if not o.plan and extend_start(p, lo):
         say(f"catalogue window now starts {lo}")
     o.search_sources = config_search_sources()
     o.start, o.end = lo, hi
@@ -565,19 +676,23 @@ def cmd_update(argv: list[str]) -> int:
         o.start = agelit.query_window()[0]  # the configured start date
     if "github" in o.sources:
         github_token_from_cli()
+    started = dt.datetime.now()
+    o.stamp = run_stamp(started)
     stages = plan(o)
-    print(f"sourcelens update\n  topic  : {p.topic}\n  folder : {p.dir}\n"
+    shown = [t for t in o.types if t in METADATA_TYPES] if o.dry_run else o.types
+    print(f"sourcelens update{' (dry run: metadata only, nothing is downloaded)' if o.dry_run else ''}\n"
+          f"  topic  : {p.topic}\n  folder : {p.dir}\n"
           f"  window : {o.start or 'config start'} .. {o.end or 'today'}\n"
-          f"  sources: {', '.join(o.sources)}\n  types  : {', '.join(o.types)}\n"
+          f"  sources: {', '.join(o.sources)}\n  types  : {', '.join(shown)}\n"
           f"  paper types (full text): {', '.join(o.paper_types)}\n"
           f"  scope  : {o.scope}   full-text tiers: {o.tiers}   workers: {o.workers}   parallel steps: {o.parallel}")
     for i, st in enumerate(stages, 1):
         print(f"  stage {i}: " + " | ".join(s.name for s in st))
-    if o.dry_run:
+    if o.plan:
         for i, st in enumerate(stages, 1):
             for s in st:
                 print(f"    {i}. {s}")
-        formats = [f for f in FT_FORMATS if f in o.types]
+        formats = [f for f in FT_FORMATS if f in shown and f != "attachments"]
         if formats:
             todo, scope = estimate_fulltext(o, formats)
             print(f"  estimate: {todo} of {scope} catalogued papers in scope would be tried for full text "
@@ -585,45 +700,191 @@ def cmd_update(argv: list[str]) -> int:
         return 0
     lock = agelit.acquire_pipeline_lock("sourcelens update")
     if lock is None:
-        held = agelit.pipeline_lock_path().read_text().strip() if agelit.pipeline_lock_path().exists() else ""
+        held = agelit.pipeline_lock_path().read_text(encoding="utf-8").strip() \
+            if agelit.pipeline_lock_path().exists() else ""
         return fail(f"another update is running ({held}); try again later")
+    label = "dry run" if o.dry_run else "update"
     try:
-        rc = run_plan(stages, o, "update")
+        rc = run_plan(stages, o, label, started)
     finally:
         lock.close()
-    newest(10)
+    report = write_report(label, started, rc, p.topic)
+    if o.dry_run:
+        dryrun_summary(o.stamp, topic_flag(o.topic) if not o.dir else f" --dir {o.dir}")
+    else:
+        newest(10)
     print(f"\ncatalogue: {rpath('progress.csv')}")
+    if report:
+        print(f"report   : {report}")
     return rc
 
 
+def write_report(label: str, started: dt.datetime, rc: int, topic: str) -> Path | None:
+    """reports/runreport_<stamp>.html for this run; a failed report never fails the run."""
+    from sourcelens.buildcatalog import report
+    try:
+        return report.write(label=label, stamp=run_stamp(started), started=started, logdir=log_dir(started),
+                            command=command_line(), topic=topic, rc=rc, impl=IMPL)
+    except Exception as exc:  # noqa: BLE001
+        say(f"run report not written: {exc.__class__.__name__}: {exc}")
+        return None
+
+
+def dryrun_summary(stamp: str, where: str) -> None:
+    """What the dry run found, and how to pick and download from it."""
+    from sourcelens.pullliturature import attachments
+    path = rpath("reports", f"dryrun_{stamp}.csv")
+    rows = read_rows(path)
+    if not rows:
+        print("\ndry run: no table written (see the log of the dryrun step)")
+        return
+    papers = [r for r in rows if r.get("resource_type") in PAPER_SET]
+    pend = Counter(p.strip() for r in rows for p in (r.get("pending") or "").split(";") if p.strip())
+    summ = Counter(r.get("summary_from") or "none" for r in rows)
+    files = [a for v in attachments.read_index().values() for a in v if a.get("file")]
+    exts = Counter(a.get("ext") or "?" for a in files)
+    print("\ndry run: metadata only, nothing was downloaded")
+    print(f"  rows        : {len(rows)} ({counts(rows, 'resource_type')})")
+    print(f"  full text   : {counts(papers, 'fulltext_status')}   (of {len(papers)} papers; -: not tried)")
+    print("  pending     : " + (", ".join(f"{k}: {v}" for k, v in sorted(pend.items(), key=lambda kv: (-kv[1], kv[0])))
+                                or "nothing"))
+    print("  summaries   : " + ", ".join(f"{k}: {v}" for k, v in sorted(summ.items(), key=lambda kv: (-kv[1], kv[0]))))
+    print(f"  attachments : {len(files)} files listed"
+          + (" (" + ", ".join(f"{e}: {n}" for e, n in sorted(exts.items(), key=lambda kv: (-kv[1], kv[0]))[:8]) + ")"
+             if files else ""))
+    print(f"  table       : {path}")
+    print("next: pick rows, then download only those")
+    print(f'  sourcelens query{where} --in "{path}" --summary "WORDS" --out picked.csv')
+    print(f"  sourcelens download{where} {rpath('exports', 'picked.csv')}")
+
+
 def cmd_retry(argv: list[str]) -> int:
-    spec = {**PROJECT_SPEC, "status": ("deferred,partial,error", str), "types": ("pdf,md,txt,xml", str),
-            "sources": (",".join(FT_SOURCES), str), "workers": (12, int), "dry-run": (False, bool)}
+    spec = {**PROJECT_SPEC, "status": ("deferred,partial,error", str), "types": (",".join(FT_FORMATS), str),
+            "sources": (",".join(FT_SOURCES), str), "ext": ("", str), "workers": (12, int),
+            "plan": (False, bool), "dry-run": (False, bool)}
     try:
         o = parse_flags(argv, spec, RETRY_HELP)
-        formats = expand(o.types, FT_FORMATS, {"fulltext": FT_FORMATS}, "format")
+        formats = expand(o.types, FT_FORMATS, {"fulltext": FT_FORMATS[:4], "files": FT_FORMATS,
+                                               "attachment": ["attachments"]}, "format")
         fsrc = expand(o.sources, FT_SOURCES, {"fulltext": FT_SOURCES}, "full-text source")
-        resolve_project(o.topic, o.dir, False)
+        p = resolve_project(o.topic, o.dir, False)
     except (ValueError, ProjectError) as exc:
         return fail(str(exc))
     want = o.status.split(",")
     n = sum(1 for r in read_rows(rpath("fulltext", "fulltext_index.csv")) if r.get("status") in want)
     print(f"sourcelens retry: {n} records with status {o.status}")
-    if o.dry_run or n == 0:
+    if o.plan or o.dry_run or n == 0:
         return 0
     o.sources, o.types, o.paper_types = fsrc, formats, PAPER_TYPES
     o.start = o.end = ""
     o.parallel, o.heartbeat, o.stop_on_error = 1, 120, False
+    o.max_attachment_mb = 100
     stages = [[Step("fulltext", "--only-status", o.status, "--formats", ",".join(formats),
-                    "--sources", ",".join(fsrc), "--workers", str(o.workers))],
+                    "--sources", ",".join(fsrc), "--workers", str(o.workers), *attachment_args(o, formats))],
               [Step("catalogue-1")], [Step("summary")]]
     lock = agelit.acquire_pipeline_lock("sourcelens retry")
     if lock is None:
         return fail("another update is running; try again later")
+    started = dt.datetime.now()
     try:
-        return run_plan(stages, o, "retry")
+        rc = run_plan(stages, o, "retry", started)
     finally:
         lock.close()
+    report = write_report("retry", started, rc, p.topic)
+    if report:
+        print(f"report   : {report}")
+    return rc
+
+
+def split_positionals(argv: list[str], spec: dict) -> tuple[list[str], list[str]]:
+    """(arguments that are not flags or flag values, the rest)."""
+    pos, rest, i = [], [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a.startswith("-") and a != "-":
+            rest.append(a)
+            name = a.lstrip("-").partition("=")[0]
+            if "=" not in a and name in spec and spec[name][1] is not bool and i + 1 < len(argv):
+                rest.append(argv[i + 1])
+                i += 1
+        else:
+            pos.append(a)
+        i += 1
+    return pos, rest
+
+
+def find_input(path: str) -> Path | None:
+    """A file named on the command line: as given, else in the catalogue, else in its exports/."""
+    for p in (Path(path), rpath(path), rpath("exports", path)):
+        if p.is_file():
+            return p.resolve()
+    return None
+
+
+def cmd_download(argv: list[str]) -> int:
+    spec = {**PROJECT_SPEC, "types": (",".join(FT_FORMATS), str), "sources": (",".join(FT_SOURCES), str),
+            "ext": ("", str), "max-attachment-mb": (100, int), "workers": (12, int), "plan": (False, bool),
+            "in": ("", str)}
+    pos, rest = split_positionals(argv, spec)
+    try:
+        o = parse_flags(rest, spec, DOWNLOAD_HELP)
+        name = getattr(o, "in") or (pos[0] if pos else "")
+        if len(pos) > 1 or (pos and getattr(o, "in")):
+            raise ValueError("download takes one file")
+        if not name:
+            raise ValueError("name the CSV of rows to download (see: sourcelens download --help)")
+        formats = expand(o.types, FT_FORMATS, {"fulltext": FT_FORMATS[:4], "files": FT_FORMATS,
+                                               "attachment": ["attachments"]}, "format")
+        fsrc = expand(o.sources, FT_SOURCES, {"fulltext": FT_SOURCES}, "full-text source")
+        p = resolve_project(o.topic, o.dir, False)
+    except (ValueError, ProjectError) as exc:
+        return fail(str(exc))
+    path = find_input(name)
+    if path is None:
+        return fail(f"cannot find {name}")
+    from sourcelens.pullliturature.fetch_fulltext import read_uids_file
+    uids = set(read_uids_file(str(path)))
+    rows = [r for r in read_rows(rpath("progress.csv")) if r.get("uid") in uids]
+    papers = [r for r in rows if r.get("resource_type") in PAPER_SET]
+    print(f"sourcelens download: {len(uids)} rows in {path}; {len(papers)} papers in the catalogue")
+    if o.plan or not papers:
+        return 0
+    started = dt.datetime.now()
+    logdir = log_dir(started)
+    logdir.mkdir(parents=True, exist_ok=True)
+    picked = logdir / "selection.txt"
+    write_text(picked, "".join(f"{r['uid']}\n" for r in papers))
+    o.sources, o.types, o.paper_types = fsrc, formats, PAPER_TYPES
+    o.start = o.end = ""
+    o.parallel, o.heartbeat, o.stop_on_error = 1, 120, False
+    stages = [[Step("fulltext", "--uids-file", str(picked), "--formats", ",".join(formats),
+                    "--sources", ",".join(fsrc), "--workers", str(o.workers), *attachment_args(o, formats))],
+              [Step("catalogue-1")], [Step("links")], [Step("summary")]]
+    lock = agelit.acquire_pipeline_lock("sourcelens download")
+    if lock is None:
+        return fail("another update is running; try again later")
+    try:
+        rc = run_plan(stages, o, "download", started)
+    finally:
+        lock.close()
+    report = write_report("download", started, rc, p.topic)
+    if report:
+        print(f"report   : {report}")
+    return rc
+
+
+def cmd_report(argv: list[str]) -> int:
+    try:
+        o = parse_flags(argv, PROJECT_SPEC, REPORT_HELP)
+        p = resolve_project(o.topic, o.dir, False)
+    except (ValueError, ProjectError) as exc:
+        return fail(str(exc))
+    from sourcelens.buildcatalog import report
+    started = dt.datetime.now()
+    path = report.write(label="report", stamp=run_stamp(started), started=started, logdir=None,
+                        command=command_line(), topic=p.topic, rc=0, impl=IMPL)
+    print(f"report: {path}")
+    return 0
 
 
 def cmd_status(argv: list[str]) -> int:
@@ -657,12 +918,12 @@ def cmd_status(argv: list[str]) -> int:
         print(f"last run: {last.relative_to(agelit.RESEARCH)}")
         plan_file = last / "plan.txt"
         if plan_file.exists():
-            for line in plan_file.read_text().splitlines():
+            for line in plan_file.read_text(encoding="utf-8").splitlines():
                 if line.startswith(("command", "window")):
                     print("  " + line)
         summ = last / "summary.txt"
         if summ.exists():
-            for line in summ.read_text().strip().splitlines():
+            for line in summ.read_text(encoding="utf-8").strip().splitlines():
                 mark = "ok    " if "rc=0" in line else "FAILED"
                 print(f"  {mark} {line.replace(chr(9), '  ')}")
         else:
@@ -671,7 +932,7 @@ def cmd_status(argv: list[str]) -> int:
     if lockf.exists():
         held = agelit.acquire_pipeline_lock("status probe")
         if held is None:
-            print(f"update running now: {lockf.read_text().strip()}")
+            print(f"update running now: {lockf.read_text(encoding='utf-8').strip()}")
         else:
             held.close()
     return 0
@@ -689,7 +950,9 @@ def cmd_sources() -> int:
     print("\n--types (comma list; default all)")
     for k, v in TYPES:
         print(f"  {k:<13} {v}")
-    print("  groups: fulltext = pdf,md,txt,xml; repos/package = repo; websites = website")
+    print("  groups: fulltext = pdf,md,txt,xml; files = pdf,md,txt,xml,attachments; repos/package = repo; "
+          "websites = website")
+    print("  attachments: figures and supplementary files; --ext picks extensions (xlsx,csv,pptx,...)")
     print("\n--paper-types (full-text downloads; default all): " + ", ".join(PAPER_TYPES))
     print("\n--format (export; comma list; default APA)")
     for c in refs.CODES:
@@ -717,7 +980,8 @@ def run_step_now(args: list[str]) -> int:
     return rc or (1 if notes else 0)
 
 
-COMMANDS = ["update", "retry", "query", "export", "status", "list", "config", "sources", "test", "version", "help"]
+COMMANDS = ["update", "download", "retry", "query", "files", "export", "report", "status", "list", "config",
+            "sources", "test", "version", "help"]
 
 
 def has_help(args: list[str]) -> bool:
@@ -726,6 +990,7 @@ def has_help(args: list[str]) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    setup_console()
     if not argv or argv[0] in ("help", "-h", "--help"):
         if len(argv) == 2 and argv[1] in COMMANDS and argv[1] != "help":
             return main([argv[1], "--help"])
@@ -738,6 +1003,16 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update(args)
     if cmd == "retry":
         return cmd_retry(args)
+    if cmd == "download":
+        return cmd_download(args)
+    if cmd == "report":
+        return cmd_report(args)
+    if cmd == "files":
+        from sourcelens.query import files
+        if has_help(args):
+            print(files.HELP, end="")
+            return 0
+        return files.run(args)
     if cmd in ("query", "export"):
         from sourcelens.query import export_refs, search_catalog
         mod = search_catalog if cmd == "query" else export_refs

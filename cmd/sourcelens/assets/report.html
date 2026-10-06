@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__SL_TITLE__</title>
+<style>
+  /* sourcelens run report; template shared by the Python and Go implementations
+     (cmd/sourcelens/assets/report.html). Data: gzip + base64 JSON in #sl-data. */
+  :root {
+    color-scheme: light;
+    --surface-0: #f4f4f2;
+    --surface-1: #fcfcfb;
+    --surface-2: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #77766f;
+    --rule: #dddcd6;
+    --series-1: #2a78d6;
+    --link: #1f5fae;
+    --sans: system-ui, -apple-system, "Segoe UI", Ubuntu, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Ubuntu Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-0: #121211;
+      --surface-1: #1a1a19;
+      --surface-2: #262624;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #96958c;
+      --rule: #34342f;
+      --series-1: #3987e5;
+      --link: #7fb0f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface-0); color: var(--text-primary); font: 15px/1.5 var(--sans); }
+  a { color: var(--link); }
+  .page { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
+  header.top { display: flex; gap: 16px; align-items: center; }
+  header.top img { width: 56px; height: auto; flex: none; }
+  h1 { margin: 0; font-size: 1.6rem; line-height: 1.2; }
+  .sub { color: var(--text-secondary); margin: 2px 0 0; }
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 16px 0 0;
+          font-size: .9rem; color: var(--text-secondary); }
+  .meta dt { color: var(--text-muted); }
+  .meta dd { margin: 0; overflow-wrap: anywhere; }
+  .meta code { font-family: var(--mono); font-size: .85rem; }
+  h2 { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted);
+       margin: 32px 0 12px; font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; }
+  .tile .n { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .tile .l { color: var(--text-secondary); font-size: .85rem; }
+  .tile .s { color: var(--text-muted); font-size: .8rem; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; }
+  .card { background: var(--surface-1); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  .card h3 { margin: 0 0 10px; font-size: .95rem; font-weight: 600; }
+  .card .note { color: var(--text-muted); font-size: .8rem; margin: 8px 0 0; }
+  .hbar { display: grid; grid-template-columns: minmax(90px, 38%) 1fr; gap: 6px 10px; align-items: center; font-size: .85rem; }
+  .hbar .lab { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hbar .track { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .hbar .bar { height: 12px; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; flex: none; }
+  .hbar .val { color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hbar .val small { color: var(--text-muted); font-size: .78rem; margin-left: 4px; }
+  .hbar.stacked { grid-template-columns: 1fr; gap: 2px; }
+  .hbar.stacked .lab { white-space: normal; margin-top: 6px; }
+  .vbars { display: flex; align-items: flex-end; gap: 2px; height: 160px; border-bottom: 1px solid var(--rule); }
+  .vbars .col { flex: 1 1 0; min-width: 2px; height: 100%; display: flex; align-items: flex-end; }
+  .vbars .col span { display: block; width: 100%; background: var(--series-1); border-radius: 4px 4px 0 0; min-height: 1px; }
+  .vaxis { display: flex; justify-content: space-between; color: var(--text-muted); font-size: .75rem; margin-top: 4px; }
+  #tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface-1); color: var(--text-primary);
+         border: 1px solid var(--rule); border-radius: 6px; padding: 4px 8px; font-size: .8rem; display: none;
+         box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--text-muted); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+       white-space: nowrap; position: sticky; top: 0; background: var(--surface-1); }
+  th.sort { cursor: pointer; }
+  th.sort:hover { color: var(--text-primary); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.nowrap { white-space: nowrap; }
+  .steps td:nth-child(2) { white-space: nowrap; }
+  .steps .last { color: var(--text-secondary); font-family: var(--mono); font-size: .78rem; overflow-wrap: anywhere; }
+  .failed { font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+  .controls input[type=search] { flex: 1 1 260px; }
+  .controls input, .controls select, .controls button {
+    font: inherit; font-size: .85rem; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--surface-1); color: var(--text-primary); }
+  .controls input[type=number] { width: 6.5em; }
+  .controls label { display: inline-flex; gap: 4px; align-items: center; font-size: .85rem; color: var(--text-secondary); }
+  .controls button { cursor: pointer; }
+  .count { color: var(--text-secondary); font-size: .85rem; margin-left: auto; }
+  .tablewrap { background: var(--surface-1); border: 1px solid var(--rule); border-radius: 8px; overflow: auto; max-height: 75vh; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--surface-2); }
+  .t-title { font-weight: 550; }
+  .t-sub { color: var(--text-muted); font-size: .8rem; }
+  .pill { display: inline-block; padding: 0 6px; border: 1px solid var(--rule); border-radius: 10px; font-size: .75rem;
+          color: var(--text-secondary); white-space: nowrap; }
+  tr.detail td { background: var(--surface-2); }
+  .detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 4px 0; }
+  .detail dt { color: var(--text-muted); }
+  .detail dd { margin: 0; overflow-wrap: anywhere; }
+  .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin: 10px 0 0; font-size: .85rem; }
+  .pager button { font: inherit; padding: 4px 10px; border: 1px solid var(--rule); border-radius: 6px;
+                  background: var(--surface-1); color: var(--text-primary); cursor: pointer; }
+  .pager button:disabled { opacity: .4; cursor: default; }
+  footer { margin-top: 32px; color: var(--text-muted); font-size: .8rem; }
+  #err { color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--rule); padding: 12px; border-radius: 8px; display: none; }
+  @media (max-width: 640px) {
+    .charts { grid-template-columns: 1fr; }
+    .meta { grid-template-columns: 1fr; }
+    .meta dt { margin-top: 6px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <img src="__SL_LOGO__" alt="sourcelens logo" width="96" height="108">
+    <div>
+      <h1 id="h-title">sourcelens run report</h1>
+      <p class="sub" id="h-sub"></p>
+    </div>
+  </header>
+  <dl class="meta" id="meta"></dl>
+  <p id="err"></p>
+
+  <h2>Numbers</h2>
+  <div class="tiles" id="tiles"></div>
+
+  <h2>Run</h2>
+  <div class="card"><table class="steps"><thead><tr><th>Step</th><th>Result</th><th>Minutes</th><th>Last message</th></tr></thead><tbody id="steps"></tbody></table></div>
+
+  <h2>Catalogue</h2>
+  <div class="charts" id="charts"></div>
+
+  <h2>All rows</h2>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search title, authors, venue, DOI, summary, keywords, reason" aria-label="Search">
+    <select id="f-type" aria-label="Type"></select>
+    <select id="f-tier" aria-label="Tier"></select>
+    <select id="f-ft" aria-label="Full text"></select>
+    <label>Year <input type="number" id="f-y1" placeholder="from" aria-label="From year"> to <input type="number" id="f-y2" placeholder="to" aria-label="To year"></label>
+    <label><input type="checkbox" id="f-att"> attachments</label>
+    <label><input type="checkbox" id="f-new"> <span id="f-new-l">added on the run's date</span></label>
+    <button id="csv" type="button">Download CSV of these rows</button>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="tablewrap">
+    <table id="tbl">
+      <thead><tr>
+        <th class="sort" data-k="date">Date</th>
+        <th class="sort" data-k="resource_type">Type</th>
+        <th class="sort" data-k="tier">Tier</th>
+        <th class="sort" data-k="title">Title</th>
+        <th class="sort num" data-k="cited_by">Cited</th>
+        <th class="sort" data-k="fulltext_status">Full text</th>
+        <th>Files</th>
+        <th class="sort" data-k="attachments">Attachments</th>
+        <th class="sort" data-k="pending">Pending</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="pager"><button id="prev" type="button">Previous</button><span id="pageinfo"></span><button id="next" type="button">Next</button></div>
+  <footer id="foot"></footer>
+</div>
+<div id="tip" role="tooltip"></div>
+<script id="sl-data" type="application/octet-stream">__SL_DATA__</script>
+<script>
+(function () {
+  "use strict";
+  var PAPERS = ["article", "review", "preprint", "report", "thesis", "conference paper", "book chapter"];
+  var CODE = ["repository", "software package", "software", "archive", "dataset"];
+  var SITES = ["website", "database", "web calculator"];
+  var PAGE = 100;
+  var tip = document.getElementById("tip");
+
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "cls") e.className = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function fmt(n) { return Number(n).toLocaleString("en-US"); }
+  function count(rows, f) {
+    var m = {};
+    rows.forEach(function (r) { var k = f(r); if (k === null || k === undefined) return; m[k] = (m[k] || 0) + 1; });
+    return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (a, b) { return b[1] - a[1] || (a[0] < b[0] ? -1 : 1); });
+  }
+  function bindTip(node, text) {
+    node.addEventListener("mousemove", function (ev) {
+      tip.textContent = text; tip.style.display = "block";
+      var x = Math.min(ev.clientX + 12, window.innerWidth - tip.offsetWidth - 8);
+      tip.style.left = x + "px"; tip.style.top = (ev.clientY + 14) + "px";
+    });
+    node.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+  }
+  function hbar(title, pairs, note, limit, stacked) {
+    var card = el("div", {cls: "card"}, [el("h3", {text: title})]);
+    var list = pairs.slice(0, limit || 12);
+    var max = list.reduce(function (m, p) { return Math.max(m, p[1]); }, 0) || 1;
+    var g = el("div", {cls: stacked ? "hbar stacked" : "hbar"});
+    list.forEach(function (p) {
+      var bar = el("span", {cls: "bar"});
+      bar.style.width = Math.max(0.5, 100 * p[1] / max) * (p[2] ? 0.55 : 0.72) + "%";
+      var track = el("div", {cls: "track"}, [bar, el("span", {cls: "val"}, [fmt(p[1]), p[2] ? el("small", {text: p[2]}) : null])]);
+      var lab = el("div", {cls: "lab", text: p[0] || "(none)", title: p[0]});
+      bindTip(track, (p[0] || "(none)") + ": " + fmt(p[1]) + (p[2] ? " (" + p[2] + ")" : ""));
+      g.appendChild(lab); g.appendChild(track);
+    });
+    if (!list.length) g.appendChild(el("div", {cls: "lab", text: "nothing yet"}));
+    card.appendChild(g);
+    if (pairs.length > list.length) card.appendChild(el("p", {cls: "note", text: (pairs.length - list.length) + " more not shown"}));
+    if (note) card.appendChild(el("p", {cls: "note", text: note}));
+    return card;
+  }
+  function years(title, rows) {
+    var m = {}, lo = 9999, hi = 0;
+    rows.forEach(function (r) { var y = parseInt(r.year || (r.date || "").slice(0, 4), 10); if (!y) return; m[y] = (m[y] || 0) + 1; lo = Math.min(lo, y); hi = Math.max(hi, y); });
+    var card = el("div", {cls: "card"}, [el("h3", {text: title})]);
+    if (hi === 0) { card.appendChild(el("p", {cls: "note", text: "no dated rows"})); return card; }
+    var max = 1; for (var y = lo; y <= hi; y++) max = Math.max(max, m[y] || 0);
+    var v = el("div", {cls: "vbars"});
+    for (var y2 = lo; y2 <= hi; y2++) {
+      var s = el("span"); s.style.height = (100 * (m[y2] || 0) / max) + "%";
+      var c = el("div", {cls: "col"}, [s]);
+      bindTip(c, y2 + ": " + fmt(m[y2] || 0) + " rows");
+      v.appendChild(c);
+    }
+    card.appendChild(v);
+    card.appendChild(el("div", {cls: "vaxis"}, [el("span", {text: String(lo)}), el("span", {text: "peak " + fmt(max)}), el("span", {text: String(hi)})]));
+    return card;
+  }
+
+  function decode() {
+    var b64 = document.getElementById("sl-data").textContent.trim();
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    if (typeof DecompressionStream === "undefined") return Promise.reject(new Error("this browser cannot unpack the report data; open it in a current browser"));
+    var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Response(stream).text().then(JSON.parse);
+  }
+
+  decode().then(render, function (e) {
+    var err = document.getElementById("err"); err.style.display = "block"; err.textContent = "Could not read the report data: " + e.message;
+  });
+
+  function render(D) {
+    var M = D.meta, cols = D.columns;
+    var rows = D.rows.map(function (a) { var o = {}; cols.forEach(function (c, i) { o[c] = a[i] || ""; }); return o; });
+    document.title = M.title;
+    document.getElementById("h-title").textContent = "Run report: " + (M.topic || "catalogue");
+    document.getElementById("h-sub").textContent = M.label + " of " + M.finished + " · sourcelens " + M.version + " (" + M.impl + ")";
+    var meta = document.getElementById("meta");
+    [["Command", M.command], ["Catalogue", M.folder], ["Started", M.started], ["Finished", M.finished],
+     ["Duration", M.minutes + " min"], ["Outcome", M.outcome], ["Logs", M.logs]].forEach(function (p) {
+      if (!p[1]) return;
+      meta.appendChild(el("dt", {text: p[0]}));
+      meta.appendChild(el("dd", {}, [p[0] === "Command" ? el("code", {text: p[1]}) : p[1]]));
+    });
+
+    var papers = rows.filter(function (r) { return PAPERS.indexOf(r.resource_type) >= 0; });
+    var added = rows.filter(function (r) { return r.added_on === M.run_date; }).length;
+    var ok = papers.filter(function (r) { return r.fulltext_status === "ok"; }).length;
+    var missing = papers.filter(function (r) { return ["none", "error", "removed"].indexOf(r.fulltext_status) >= 0; }).length;
+    var pending = rows.filter(function (r) { return r.pending; }).length;
+    var att = D.attachments || [];
+    var attOk = att.reduce(function (s, a) { return s + (a.ok || 0); }, 0);
+    var attAll = att.reduce(function (s, a) { return s + (a.total || 0); }, 0);
+    var code = rows.filter(function (r) { return CODE.indexOf(r.resource_type) >= 0; }).length;
+    var sites = rows.filter(function (r) { return SITES.indexOf(r.resource_type) >= 0; }).length;
+    var links = rows.reduce(function (s, r) { return s + (r.code_links ? r.code_links.split("; ").length : 0); }, 0);
+    document.getElementById("f-new-l").textContent = "added " + M.run_date;
+    var tiles = document.getElementById("tiles");
+    [[fmt(rows.length), "rows in the catalogue", fmt(added) + " added on " + M.run_date],
+     [fmt(papers.length), "papers and preprints", fmt(papers.filter(function (r) { return r.summary_from === "abstract"; }).length) + " with an abstract"],
+     [fmt(ok), "full texts downloaded", papers.length ? Math.round(100 * ok / papers.length) + "% of papers" : ""],
+     [fmt(missing), "papers without an open full text", "reasons below and in the table"],
+     [fmt(pending), "rows with downloads pending", "full texts or attachments"],
+     [fmt(attOk) + " / " + fmt(attAll), "attachments downloaded / known", "figures, tables, supplementary files"],
+     [fmt(code), "repositories, packages, data", fmt(links) + " code and data links in papers"],
+     [fmt(sites), "websites and databases", ""]].forEach(function (t) {
+      tiles.appendChild(el("div", {cls: "tile"}, [el("div", {cls: "n", text: t[0]}), el("div", {cls: "l", text: t[1]}), t[2] ? el("div", {cls: "s", text: t[2]}) : null]));
+    });
+
+    var steps = document.getElementById("steps");
+    (D.steps || []).forEach(function (s) {
+      steps.appendChild(el("tr", {}, [el("td", {text: s.name}), el("td", {cls: s.ok ? "" : "failed", text: s.ok ? "done" : "FAILED"}),
+        el("td", {cls: "num", text: s.minutes}), el("td", {cls: "last", text: s.last || ""})]));
+    });
+    if (!(D.steps || []).length) steps.appendChild(el("tr", {}, [el("td", {colspan: "4", text: "no steps: a report of the catalogue as it is"})]));
+
+    var reasons = {};
+    papers.forEach(function (r) {
+      if (r.fulltext_status === "ok" || !r.fulltext_reason) return;
+      r.fulltext_reason.split("; ").forEach(function (x) { x = x.replace(/\s*\(tried: .*\)$/, ""); reasons[x] = (reasons[x] || 0) + 1; });
+    });
+    var reasonPairs = Object.keys(reasons).map(function (k) { return [k, reasons[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+    var charts = document.getElementById("charts");
+    charts.appendChild(years("Rows per publication year", rows));
+    charts.appendChild(hbar("Resource types", count(rows, function (r) { return r.resource_type; })));
+    charts.appendChild(hbar("Full text of papers", count(papers, function (r) { return r.fulltext_status || "not tried"; }), "ok: downloaded; none: no open copy found; deferred: rate-limited, tried again on the next run"));
+    charts.appendChild(hbar("Why full texts are missing", reasonPairs, "one paper can have several reasons", 10, true));
+    charts.appendChild(hbar("Attachments by file type", att.map(function (a) { return [a.ext || "?", a.total, fmt(a.ok) + " downloaded"]; }), "figures, tables and supplementary files of open-access PMC articles"));
+    charts.appendChild(hbar("Tiers", count(rows, function (r) { return r.tier || "(none)"; })));
+    charts.appendChild(hbar("Categories", count(rows, function (r) { return r.category || "(none)"; }), "", 10));
+    charts.appendChild(hbar("Venues of papers", count(papers, function (r) { return r.venue || null; }), "", 10));
+
+    // ---- table
+    rows.forEach(function (r) {
+      r._s = [r.title, r.authors, r.venue, r.doi, r.summary, r.keywords, r.fulltext_reason, r.uid, r.entities, r.category].join(" ").toLowerCase();
+    });
+    function fill(id, label, vals) {
+      var s = document.getElementById(id);
+      s.appendChild(el("option", {value: "", text: label}));
+      vals.forEach(function (v) { s.appendChild(el("option", {value: v[0], text: (v[0] || "(none)") + " (" + fmt(v[1]) + ")"})); });
+    }
+    fill("f-type", "All types", count(rows, function (r) { return r.resource_type; }));
+    fill("f-tier", "All tiers", count(rows, function (r) { return r.tier; }));
+    fill("f-ft", "Any full-text status", count(papers, function (r) { return r.fulltext_status || "not tried"; }));
+    var state = {sort: "date", dir: -1, page: 0, view: rows, open: {}};
+    function val(id) { return document.getElementById(id).value; }
+    function apply() {
+      var q = val("q").trim().toLowerCase().split(/\s+/).filter(Boolean);
+      var t = val("f-type"), ti = val("f-tier"), ft = val("f-ft");
+      var y1 = parseInt(val("f-y1"), 10), y2 = parseInt(val("f-y2"), 10);
+      var at = document.getElementById("f-att").checked, nw = document.getElementById("f-new").checked;
+      state.view = rows.filter(function (r) {
+        if (t && r.resource_type !== t) return false;
+        if (ti && r.tier !== ti) return false;
+        if (ft && (r.fulltext_status || "not tried") !== ft) return false;
+        var y = parseInt(r.year || (r.date || "").slice(0, 4), 10);
+        if (y1 && !(y >= y1)) return false;
+        if (y2 && !(y <= y2)) return false;
+        if (at && !/^\d+\/[1-9]/.test(r.attachments)) return false;
+        if (nw && r.added_on !== M.run_date) return false;
+        for (var i = 0; i < q.length; i++) if (r._s.indexOf(q[i]) < 0) return false;
+        return true;
+      });
+      sortView(); state.page = 0; draw();
+    }
+    function sortView() {
+      var k = state.sort, d = state.dir;
+      state.view.sort(function (a, b) {
+        var x = a[k] || "", y = b[k] || "";
+        if (k === "cited_by") { x = +x || 0; y = +y || 0; }
+        return x < y ? -d : x > y ? d : 0;
+      });
+    }
+    function fileLinks(r) {
+      var span = el("span");
+      [["pdf", r.fulltext_pdf], ["md", r.fulltext_md]].forEach(function (p) {
+        if (!p[1]) return;
+        span.appendChild(el("a", {href: "../" + p[1], text: p[0]})); span.appendChild(document.createTextNode(" "));
+      });
+      return span;
+    }
+    function detail(r) {
+      var dl = el("dl");
+      [["Summary", r.summary ? r.summary + (r.summary_from ? "  [" + r.summary_from + "]" : "") : ""], ["Keywords", r.keywords],
+       ["Authors", r.authors], ["Venue", r.venue], ["DOI", r.doi], ["Full text", (r.fulltext_status || "not tried") + (r.fulltext_reason ? ": " + r.fulltext_reason : "")],
+       ["Possible sources", r.fulltext_sources], ["Attachments", r.attachments], ["Pending", r.pending], ["Code and data", r.code_links],
+       ["Category", r.category], ["Modality", r.modality], ["Entities", r.entities], ["Species", r.species], ["Found by", r.found_by],
+       ["Related", r.related], ["Details", r.details], ["Licence", r.license], ["Added", r.added_on], ["Notes", r.notes], ["Tags", r.user_tags], ["uid", r.uid]]
+        .forEach(function (p) { if (p[1]) { dl.appendChild(el("dt", {text: p[0]})); dl.appendChild(el("dd", {text: p[1]})); } });
+      return el("tr", {cls: "detail"}, [el("td", {colspan: "9"}, [dl])]);
+    }
+    function draw() {
+      var body = document.getElementById("rows");
+      body.textContent = "";
+      var start = state.page * PAGE, part = state.view.slice(start, start + PAGE);
+      part.forEach(function (r) {
+        var link = r.url ? el("a", {href: r.url, target: "_blank", rel: "noopener", text: r.title || r.uid}) : (r.title || r.uid);
+        var tr = el("tr", {cls: "row"}, [
+          el("td", {cls: "nowrap", text: r.date}), el("td", {text: r.resource_type}), el("td", {text: r.tier}),
+          el("td", {}, [el("div", {cls: "t-title"}, [link]), el("div", {cls: "t-sub", text: [r.authors, r.venue].filter(Boolean).join(" · ")})]),
+          el("td", {cls: "num", text: r.cited_by}),
+          el("td", {}, [r.fulltext_status ? el("span", {cls: "pill", text: r.fulltext_status, title: r.fulltext_reason || ""}) : null]),
+          el("td", {}, [fileLinks(r)]), el("td", {text: r.attachments}), el("td", {text: r.pending})]);
+        tr.addEventListener("click", function (ev) {
+          if (ev.target.tagName === "A") return;
+          state.open[r.uid] = !state.open[r.uid]; draw();
+        });
+        body.appendChild(tr);
+        if (state.open[r.uid]) body.appendChild(detail(r));
+      });
+      var pages = Math.max(1, Math.ceil(state.view.length / PAGE));
+      document.getElementById("count").textContent = fmt(state.view.length) + " of " + fmt(rows.length) + " rows";
+      document.getElementById("pageinfo").textContent = "page " + (state.page + 1) + " of " + pages;
+      document.getElementById("prev").disabled = state.page === 0;
+      document.getElementById("next").disabled = state.page >= pages - 1;
+    }
+    var timer = null;
+    document.getElementById("q").addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(apply, 150); });
+    ["f-type", "f-tier", "f-ft", "f-y1", "f-y2", "f-att", "f-new"].forEach(function (id) { document.getElementById(id).addEventListener("change", apply); });
+    document.getElementById("prev").addEventListener("click", function () { state.page--; draw(); });
+    document.getElementById("next").addEventListener("click", function () { state.page++; draw(); });
+    Array.prototype.forEach.call(document.querySelectorAll("th.sort"), function (th) {
+      th.addEventListener("click", function () {
+        var k = th.getAttribute("data-k");
+        state.dir = state.sort === k ? -state.dir : (k === "date" || k === "cited_by" ? -1 : 1);
+        state.sort = k; sortView(); state.page = 0; draw();
+      });
+    });
+    document.getElementById("csv").addEventListener("click", function () {
+      function q(v) { v = String(v == null ? "" : v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+      var lines = [cols.join(",")].concat(state.view.map(function (r) { return cols.map(function (c) { return q(r[c]); }).join(","); }));
+      var a = el("a", {href: URL.createObjectURL(new Blob([lines.join("\r\n") + "\r\n"], {type: "text/csv"})), download: "sourcelens_rows.csv"});
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+    apply();
+    document.getElementById("foot").textContent = "Written by sourcelens " + M.version + " (" + M.impl + ") on " + M.finished +
+      ". Summaries are cut to " + M.summary_max + " characters here; the full rows are in progress.csv and the dry-run tables. File links open the files in the catalogue folder.";
+  }
+})();
+</script>
+</body>
+</html>

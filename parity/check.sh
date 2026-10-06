@@ -26,6 +26,7 @@ norm() {
          -e 's#parity_(py|go)/#parity_X/#g; s#proj_(py|go)#proj_X#g' \
          -e "s#$W#{W}#g" \
          -e '/^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]/d' \
+         -e 's/[0-9]{4}(_[0-9]{2}){5}/STAMP/g; s/cli_[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}/cli_STAMP/g' \
          -e 's/[0-9]+\.[0-9] min/N.N min/g'
 }
 
@@ -55,7 +56,8 @@ done <"$HERE/cases.txt"
 
 compare_dirs() {  # $1 label, $2 py dir, $3 go dir
   [[ -d "$2" || -d "$3" ]] || return 0
-  if diff -r -x logs -x runs.csv -x "*.lock" -x records.jsonl.gz "$2" "$3" >"$W/files.diff" 2>&1; then
+  # reports/ holds files named after the moment of each run; its dry-run tables are compared below
+  if diff -r -x logs -x reports -x runs.csv -x "*.lock" -x records.jsonl.gz "$2" "$3" >"$W/files.diff" 2>&1; then
     pass=$((pass + 1)); echo "same  files: $1"
   else
     fail=$((fail + 1)); echo "DIFF  files: $1"; head -30 "$W/files.diff" | sed 's/^/      /'
@@ -63,6 +65,16 @@ compare_dirs() {  # $1 label, $2 py dir, $3 go dir
 }
 compare_dirs "exports/parity_{X}/" "$OUT_BASE/exports/parity_py" "$OUT_BASE/exports/parity_go"
 compare_dirs "{W}/proj_{X}/" "$W/proj_py" "$W/proj_go"
+py_dry=$(ls "$W"/proj_py/reports/dryrun_*.csv 2>/dev/null | tail -1)
+go_dry=$(ls "$W"/proj_go/reports/dryrun_*.csv 2>/dev/null | tail -1)
+if [[ -n "$py_dry$go_dry" ]]; then
+  if [[ -n "$py_dry" && -n "$go_dry" ]] && cmp -s "$py_dry" "$go_dry"; then
+    pass=$((pass + 1)); echo "same  files: {W}/proj_{X}/reports/dryrun_STAMP.csv"
+  else
+    fail=$((fail + 1)); echo "DIFF  files: {W}/proj_{X}/reports/dryrun_STAMP.csv"
+    diff "$py_dry" "$go_dry" | head -20 | sed 's/^/      /'
+  fi
+fi
 rm -rf "$OUT_BASE/exports/parity_py" "$OUT_BASE/exports/parity_go"
 echo "parity: $pass same, $fail different"
 [[ $fail -eq 0 ]]
