@@ -60,13 +60,18 @@ var (
 		{"md", "full-text Markdown"},
 		{"txt", "full-text plain text"},
 		{"xml", "full-text source XML (JATS)"},
+		{"attachments", "figures and supplementary files (spreadsheets, slides, documents) of open-access papers"},
 		{"repo", "code repositories and software packages"},
 		{"website", "websites, databases, web calculators"},
 	}
 	typeGroups = map[string][]string{"fulltext": {"pdf", "md", "txt", "xml"}, "repos": {"repo"}, "repository": {"repo"},
-		"package": {"repo"}, "packages": {"repo"}, "websites": {"website"}, "paper": {"papers"}, "metadata": {"papers"}}
-	paperTypes     = []string{"article", "review", "preprint", "report", "thesis", "conference paper", "book chapter"}
-	ftFormats      = []string{"pdf", "md", "txt", "xml"}
+		"package": {"repo"}, "packages": {"repo"}, "websites": {"website"}, "paper": {"papers"}, "metadata": {"papers"},
+		"attachment": {"attachments"}, "files": {"pdf", "md", "txt", "xml", "attachments"}}
+	paperTypes    = []string{"article", "review", "preprint", "report", "thesis", "conference paper", "book chapter"}
+	ftFormats     = []string{"pdf", "md", "txt", "xml", "attachments"}
+	metadataTypes = []string{"papers", "repo", "website"} // what a dry run fetches
+	formatGroups  = map[string][]string{"fulltext": {"pdf", "md", "txt", "xml"}, "files": {"pdf", "md", "txt", "xml", "attachments"},
+		"attachment": {"attachments"}}
 	ftSources      = []string{"pmc", "biorxiv", "europepmc", "arxiv", "openalex", "unpaywall"}
 	cliRepoSrcs    = []string{"github", "cran", "bioconductor", "pypi", "zenodo"}
 	searchSrcNames = []string{"pubmed", "europepmc", "arxiv", "openalex"}
@@ -96,6 +101,7 @@ var steps = map[string]func([]string, *Logger) error{
 	"repositories":    stepRepositories,
 	"websites":        stepWebsites,
 	"summary":         stepSummary,
+	"dryrun":          stepDryrun,
 }
 
 const mainHelp = `sourcelens %s: collect the latest research on any topic
@@ -106,9 +112,12 @@ usage
 
 commands
   update    search, download and rebuild a catalogue (the default topic without --topic)
+  download  download the full texts and attachments of the rows in a CSV (a filtered dry run)
   retry     download again the full texts that were deferred, partial or failed
-  query     filter a catalogue
+  query     filter a catalogue or a dry-run table
+  files     list, copy, move or delete downloaded files by extension, name or paper
   export    write catalogue entries as references (APA AMA MLA CHI HAR VAN IEE NAT BIB RIS ENW CSL)
+  report    write the run report (searchable HTML) of a catalogue now
   status    size, full-text coverage, last runs and failures of a catalogue
   list      the catalogues in the output folder
   config    show or change the settings of this machine (output folder, contact email, keys)
@@ -120,6 +129,9 @@ examples
   sourcelens "CRISPR base editing"                 last 12 months, every source
   sourcelens "graph neural networks" --range 3y    a longer window
   sourcelens update                                the default topic
+  sourcelens "CRISPR base editing" --dry-run       metadata and a table of what is there; no downloads
+  sourcelens query --in reports/dryrun_<stamp>.csv --summary "off-target" --out picked.csv
+  sourcelens download exports/picked.csv           download only the picked rows
   sourcelens query --topic "CRISPR base editing" --range 1m
   sourcelens export --topic "CRISPR base editing" --format BIB --out crispr.bib
 
@@ -142,25 +154,35 @@ const updateHelp = `sourcelens update [options]: search, download and rebuild a 
   sourcelens update --from 2020 --to 2022-06        exact window (year, month or day)
   sourcelens update --types pdf,md --sources pmc,unpaywall --range 2y
   sourcelens update --types repo,website            repositories, packages, websites only
-  sourcelens update --sources pubmed,arxiv --dry-run
+  sourcelens update --dry-run                       metadata only, then a table of what could be downloaded
+  sourcelens update --types attachments --ext xlsx,csv,pptx   spreadsheets and slides of open papers
+  sourcelens update --sources pubmed,arxiv --plan
 
 ` + projectHelp + `
 options
   --sources LIST      sources or groups (default all; see: sourcelens sources)
-  --types LIST        all | papers,pdf,md,txt,xml,repo,website (default all)
+  --types LIST        all | papers,pdf,md,txt,xml,attachments,repo,website (default all)
   --paper-types LIST  paper types to download full texts for (default all)
   --range SPAN        span back from --to: 1d 7d 2w 1m 6m 1y 2y 10y
   --from WHEN         YYYY, YYYY-MM, YYYY-MM-DD, today or a span (2y)
   --to WHEN           YYYY, YYYY-MM, YYYY-MM-DD or today (default today)
   --scope S           search groups: focused | broad | all (default all)
   --tiers LIST        catalogue tiers for full texts (default landmark,core,related)
+  --ext LIST          attachment file extensions to download, e.g. xlsx,csv,pptx (default all)
+  --max-attachment-mb N   larger attachments are listed but not downloaded (default 100, 0: no limit)
   --workers N         parallel full-text downloads (default 12)
   --parallel N        steps run at the same time within a stage (default 5)
   --min-stars N       GitHub search hits need this many stars (default 3)
   --heartbeat SEC     progress lines every SEC seconds when the output is not a
                       terminal; a terminal shows a progress bar (default 120, 0: none)
   --stop-on-error     stop after the first failed stage
-  --dry-run           print the plan and a full-text estimate, then exit
+  --dry-run           search and fetch metadata only, download nothing, and write
+                      reports/dryrun_<stamp>.csv: every row with its summary and what
+                      could be downloaded; filter it with query --in, then download
+  --plan              print the plan and a full-text estimate, then exit
+
+Every run writes reports/runreport_<stamp>.html: a single page with the run's
+numbers and a searchable, filterable table of the catalogue.
 
 A range limits the searches (publication date), the full-text downloads
 (publication date) and the GitHub search (creation date). It never removes
@@ -175,10 +197,37 @@ was deferred (rate limit), partial or failed, then rebuild
 ` + projectHelp + `
 options
   --status LIST   last full-text statuses to try again (default deferred,partial,error)
-  --types LIST    formats to keep: pdf,md,txt,xml (default all four)
+  --types LIST    formats to keep: pdf,md,txt,xml,attachments (default all)
   --sources LIST  full-text sources (default pmc,biorxiv,europepmc,arxiv,openalex,unpaywall)
+  --ext LIST      attachment file extensions to download (default all)
   --workers N     parallel downloads (default 12)
-  --dry-run       count the records and exit
+  --plan          count the records and exit
+`
+
+const downloadHelp = `sourcelens download FILE [options]: download the full texts and attachments
+of the rows in FILE, then rebuild
+
+FILE is a CSV with a uid or doi column: a dry-run table filtered with
+sourcelens query --in ... --out FILE, or any query output. Relative paths are
+looked up in the current folder, then in the catalogue and its exports/.
+
+  sourcelens "CRISPR base editing" --dry-run
+  sourcelens query --topic "CRISPR base editing" --in reports/dryrun_<stamp>.csv --summary prime --out prime.csv
+  sourcelens download --topic "CRISPR base editing" exports/prime.csv
+  sourcelens download picked.csv --types attachments --ext xlsx,csv
+
+` + projectHelp + `
+options
+  --types LIST    formats: pdf,md,txt,xml,attachments (default all)
+  --sources LIST  full-text sources (default pmc,biorxiv,europepmc,arxiv,openalex,unpaywall)
+  --ext LIST      attachment file extensions to download (default all)
+  --max-attachment-mb N   larger attachments are listed but not downloaded (default 100, 0: no limit)
+  --workers N     parallel downloads (default 12)
+  --plan          count the rows and exit
+`
+
+const reportHelp = `sourcelens report [--topic TEXT | --dir DIR]: write reports/runreport_<stamp>.html
+for the catalogue as it is now (every update, retry, download and dry run writes one too)
 `
 
 const statusHelp = `sourcelens status [--topic TEXT | --dir DIR]: size, full-text coverage, last
@@ -299,7 +348,9 @@ type opts struct {
 	searchSources                          []string // literature sources enabled in the configuration
 	start, end, scope, tiers               string
 	workers, parallel, minStars, heartbeat int
-	stopOnError, dryRun                    bool
+	stopOnError, dryRun, plan              bool
+	ext, stamp                             string
+	maxAttMB                               int
 }
 
 func keep(vocab []string, in []string) []string {
@@ -327,6 +378,9 @@ func configSearchSources() []string {
 
 func plan(o opts) [][]step {
 	src, ty := o.sources, o.types
+	if o.dryRun {
+		ty = keep(metadataTypes, ty)
+	}
 	papers := contains(ty, "papers")
 	search := func(name string) bool { return papers && contains(src, name) && contains(o.searchSources, name) }
 	formats := keep(ftFormats, ty)
@@ -367,8 +421,9 @@ func plan(o opts) [][]step {
 		s3 = append(s3, newStep("preprint-links"))
 	}
 	if len(formats) > 0 && len(fts) > 0 {
-		s3 = append(s3, newStep("fulltext", "--formats", strings.Join(formats, ","), "--sources", strings.Join(fts, ","),
-			"--types", strings.Join(o.paperTypes, ","), "--tiers", o.tiers, "--workers", strconv.Itoa(o.workers)))
+		s3 = append(s3, newStep("fulltext", append([]string{"--formats", strings.Join(formats, ","), "--sources", strings.Join(fts, ","),
+			"--types", strings.Join(o.paperTypes, ","), "--tiers", o.tiers, "--workers", strconv.Itoa(o.workers)},
+			attachmentArgs(o, formats)...)...))
 	}
 	stages = append(stages, s3)
 	if len(s3) > 0 {
@@ -389,6 +444,9 @@ func plan(o opts) [][]step {
 		stages = append(stages, []step{newStep("catalogue-3")})
 	}
 	stages = append(stages, []step{newStep("summary")})
+	if o.dryRun {
+		stages = append(stages, []step{newStep("dryrun", "--stamp", o.stamp)})
+	}
 	var out [][]step
 	for _, s := range stages {
 		if len(s) > 0 {
@@ -396,6 +454,56 @@ func plan(o opts) [][]step {
 		}
 	}
 	return out
+}
+
+// attachmentArgs: --attachment-ext / --max-attachment-mb for the fulltext step,
+// when attachments are asked for.
+func attachmentArgs(o opts, formats []string) []string {
+	if !contains(formats, "attachments") {
+		return nil
+	}
+	var out []string
+	if o.ext != "" {
+		var exts []string
+		for _, e := range strings.Split(o.ext, ",") {
+			if e = pyStrip(e); e != "" {
+				exts = append(exts, strings.TrimLeft(strings.ToLower(e), "."))
+			}
+		}
+		out = append(out, "--attachment-ext", strings.Join(exts, ","))
+	}
+	if o.maxAttMB != 100 {
+		out = append(out, "--max-attachment-mb", strconv.Itoa(o.maxAttMB))
+	}
+	return out
+}
+
+// runStamp: the stamp of a run's reports, YYYY_MM_DD_HH_MM_SS.
+func runStamp(t time.Time) string { return t.Format("2006_01_02_15_04_05") }
+
+var shellSafe = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+
+// shQuote is python's shlex.quote.
+func shQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if shellSafe.MatchString(s) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+func commandLine() string {
+	parts := []string{"sourcelens"}
+	for _, a := range os.Args[1:] {
+		parts = append(parts, shQuote(a))
+	}
+	return strings.Join(parts, " ")
+}
+
+func logDir(started time.Time) string {
+	return rpath("logs", "cli_"+started.Format("2006-01-02_150405"))
 }
 
 // ---------------------------------------------------------------------------
@@ -510,9 +618,8 @@ func runStep(s step, logPath string, env []string) result {
 	return result{s, rc, dur, logPath}
 }
 
-func runPlan(stages [][]step, o opts, label string) int {
-	stamp := time.Now().Format("2006-01-02_150405")
-	logdir := rpath("logs", "cli_"+stamp)
+func runPlan(stages [][]step, o opts, label string, runStart time.Time) int {
+	logdir := logDir(runStart)
 	if err := os.MkdirAll(logdir, 0o755); err != nil {
 		return fail(err.Error())
 	}
@@ -777,7 +884,8 @@ func cmdUpdate(argv []string) int {
 		flagSpec{"range", "", kStr}, flagSpec{"from", "", kStr}, flagSpec{"to", "", kStr}, flagSpec{"scope", "all", kStr},
 		flagSpec{"tiers", "landmark,core,related", kStr}, flagSpec{"workers", "12", kInt}, flagSpec{"parallel", "5", kInt},
 		flagSpec{"min-stars", "3", kInt}, flagSpec{"heartbeat", "120", kInt}, flagSpec{"stop-on-error", "false", kBool},
-		flagSpec{"dry-run", "false", kBool})
+		flagSpec{"dry-run", "false", kBool}, flagSpec{"plan", "false", kBool}, flagSpec{"ext", "", kStr},
+		flagSpec{"max-attachment-mb", "100", kInt})
 	f, err := parseFlags(argv, spec, updateHelp)
 	if _, ok := err.(errHelp); ok {
 		return 0
@@ -787,7 +895,7 @@ func cmdUpdate(argv []string) int {
 	}
 	o := opts{scope: f["scope"], tiers: f["tiers"], workers: f.int("workers"), parallel: f.int("parallel"),
 		minStars: f.int("min-stars"), heartbeat: f.int("heartbeat"), stopOnError: f.bool("stop-on-error"),
-		dryRun: f.bool("dry-run")}
+		dryRun: f.bool("dry-run"), plan: f.bool("plan"), ext: f["ext"], maxAttMB: f.int("max-attachment-mb")}
 	if o.sources, err = expand(f["sources"], names(sources), sourceGroups, "source"); err != nil {
 		return fail(err.Error())
 	}
@@ -814,10 +922,10 @@ func cmdUpdate(argv []string) int {
 	if err != nil {
 		return fail(err.Error())
 	}
-	p, err := resolveProject(f["topic"], f["dir"], !o.dryRun, lo)
+	p, err := resolveProject(f["topic"], f["dir"], !o.plan, lo)
 	if err != nil {
-		if o.dryRun && !fileExists(p.config) {
-			fmt.Printf("sourcelens update (dry run)\n  catalogue: %s (not created yet)\n  topic    : %s\n  terms    : %s\n",
+		if o.plan && !fileExists(p.config) {
+			fmt.Printf("sourcelens update (plan)\n  catalogue: %s (not created yet)\n  topic    : %s\n  terms    : %s\n",
 				p.dir, orDefault(f["topic"], defaultTopic()), strings.Join(parseTopic(orDefault(f["topic"], defaultTopic())), " | "))
 			return 0
 		}
@@ -826,7 +934,7 @@ func cmdUpdate(argv []string) int {
 	if p.created {
 		say("new catalogue for %q in %s", p.topic, p.dir)
 	}
-	if !o.dryRun {
+	if !o.plan {
 		if moved, err := extendStart(p, lo); err != nil {
 			return fail(err.Error())
 		} else if moved {
@@ -844,11 +952,19 @@ func cmdUpdate(argv []string) int {
 	if contains(o.sources, "github") {
 		githubTokenFromCLI()
 	}
+	started := time.Now()
+	o.stamp = runStamp(started)
 	stages := plan(o)
-	fmt.Printf("sourcelens update\n  topic  : %s\n  folder : %s\n  window : %s .. %s\n  sources: %s\n  types  : %s\n"+
+	shown := o.types
+	header := "sourcelens update"
+	if o.dryRun {
+		shown = keep(metadataTypes, o.types)
+		header += " (dry run: metadata only, nothing is downloaded)"
+	}
+	fmt.Printf("%s\n  topic  : %s\n  folder : %s\n  window : %s .. %s\n  sources: %s\n  types  : %s\n"+
 		"  paper types (full text): %s\n  scope  : %s   full-text tiers: %s   workers: %d   parallel steps: %d\n",
-		p.topic, p.dir, orDefault(o.start, "config start"), orDefault(o.end, "today"), strings.Join(o.sources, ", "),
-		strings.Join(o.types, ", "), strings.Join(o.paperTypes, ", "), o.scope, o.tiers, o.workers, o.parallel)
+		header, p.topic, p.dir, orDefault(o.start, "config start"), orDefault(o.end, "today"), strings.Join(o.sources, ", "),
+		strings.Join(shown, ", "), strings.Join(o.paperTypes, ", "), o.scope, o.tiers, o.workers, o.parallel)
 	for i, st := range stages {
 		nm := make([]string, len(st))
 		for j, s := range st {
@@ -856,13 +972,13 @@ func cmdUpdate(argv []string) int {
 		}
 		fmt.Printf("  stage %d: %s\n", i+1, strings.Join(nm, " | "))
 	}
-	if o.dryRun {
+	if o.plan {
 		for i, st := range stages {
 			for _, s := range st {
 				fmt.Printf("    %d. %s\n", i+1, s)
 			}
 		}
-		if formats := keep(ftFormats, o.types); len(formats) > 0 {
+		if formats := keep(ftFormats[:4], shown); len(formats) > 0 {
 			todo, scope := estimateFulltext(o, formats)
 			fmt.Printf("  estimate: %d of %d catalogued papers in scope would be tried for full text "+
 				"(plus whatever the searches add)\n", todo, scope)
@@ -873,20 +989,106 @@ func cmdUpdate(argv []string) int {
 	if err != nil {
 		return fail(err.Error())
 	}
-	defer lock.Close()
-	rc := runPlan(stages, o, "update")
+	label := "update"
+	if o.dryRun {
+		label = "dry run"
+	}
+	rc := runPlan(stages, o, label, started)
+	lock.Close()
 	if rc == 130 { // interrupted
 		return rc
 	}
-	newest(10)
+	report := writeReport(label, started, rc, p.topic)
+	if o.dryRun {
+		where := topicFlag(f["topic"])
+		if f["dir"] != "" {
+			where = " --dir " + f["dir"]
+		}
+		dryrunSummary(o.stamp, where)
+	} else {
+		newest(10)
+	}
 	fmt.Printf("\ncatalogue: %s\n", rpath("progress.csv"))
+	if report != "" {
+		fmt.Printf("report   : %s\n", report)
+	}
 	return rc
 }
 
+// writeReport: reports/runreport_<stamp>.html for this run; a failed report
+// never fails the run.
+func writeReport(label string, started time.Time, rc int, topic string) string {
+	path, err := writeRunReport(label, runStamp(started), started, logDir(started), commandLine(), topic, rc)
+	if err != nil {
+		say("run report not written: %v", err)
+		return ""
+	}
+	return path
+}
+
+// dryrunSummary: what the dry run found, and how to pick and download from it.
+func dryrunSummary(stamp, where string) {
+	path := rpath("reports", "dryrun_"+stamp+".csv")
+	rows, _ := readCSV(path)
+	if len(rows) == 0 {
+		fmt.Println("\ndry run: no table written (see the log of the dryrun step)")
+		return
+	}
+	var papers []Row
+	pend, summ := map[string]int{}, map[string]int{}
+	for _, r := range rows {
+		if paperTypeSet[r["resource_type"]] {
+			papers = append(papers, r)
+		}
+		for _, p := range strings.Split(r["pending"], ";") {
+			if p = pyStrip(p); p != "" {
+				pend[p]++
+			}
+		}
+		summ[orDefault(r["summary_from"], "none")]++
+	}
+	exts := map[string]int{}
+	nfiles := 0
+	for _, list := range readAttIndex() {
+		for _, a := range list {
+			if a["file"] != "" {
+				nfiles++
+				exts[orDefault(a["ext"], "?")]++
+			}
+		}
+	}
+	byCount := func(m map[string]int, limit int) string {
+		ks := sortedKeys(m)
+		sort.SliceStable(ks, func(i, j int) bool { return m[ks[i]] > m[ks[j]] })
+		if limit > 0 && len(ks) > limit {
+			ks = ks[:limit]
+		}
+		parts := make([]string, len(ks))
+		for i, k := range ks {
+			parts[i] = fmt.Sprintf("%s: %d", k, m[k])
+		}
+		return strings.Join(parts, ", ")
+	}
+	fmt.Println("\ndry run: metadata only, nothing was downloaded")
+	fmt.Printf("  rows        : %d (%s)\n", len(rows), counts(rows, "resource_type"))
+	fmt.Printf("  full text   : %s   (of %d papers; -: not tried)\n", counts(papers, "fulltext_status"), len(papers))
+	fmt.Printf("  pending     : %s\n", orDefault(byCount(pend, 0), "nothing"))
+	fmt.Printf("  summaries   : %s\n", byCount(summ, 0))
+	att := fmt.Sprintf("%d files listed", nfiles)
+	if nfiles > 0 {
+		att += " (" + byCount(exts, 8) + ")"
+	}
+	fmt.Printf("  attachments : %s\n", att)
+	fmt.Printf("  table       : %s\n", path)
+	fmt.Println("next: pick rows, then download only those")
+	fmt.Printf("  sourcelens query%s --in \"%s\" --summary \"WORDS\" --out picked.csv\n", where, path)
+	fmt.Printf("  sourcelens download%s %s\n", where, rpath("exports", "picked.csv"))
+}
+
 func cmdRetry(argv []string) int {
-	spec := withProject(flagSpec{"status", "deferred,partial,error", kStr}, flagSpec{"types", "pdf,md,txt,xml", kStr},
-		flagSpec{"sources", strings.Join(ftSources, ","), kStr}, flagSpec{"workers", "12", kInt},
-		flagSpec{"dry-run", "false", kBool})
+	spec := withProject(flagSpec{"status", "deferred,partial,error", kStr}, flagSpec{"types", strings.Join(ftFormats, ","), kStr},
+		flagSpec{"sources", strings.Join(ftSources, ","), kStr}, flagSpec{"ext", "", kStr}, flagSpec{"workers", "12", kInt},
+		flagSpec{"plan", "false", kBool}, flagSpec{"dry-run", "false", kBool})
 	f, err := parseFlags(argv, spec, retryHelp)
 	if _, ok := err.(errHelp); ok {
 		return 0
@@ -894,7 +1096,7 @@ func cmdRetry(argv []string) int {
 	if err != nil {
 		return fail(err.Error())
 	}
-	formats, err := expand(f["types"], ftFormats, map[string][]string{"fulltext": ftFormats}, "format")
+	formats, err := expand(f["types"], ftFormats, formatGroups, "format")
 	if err != nil {
 		return fail(err.Error())
 	}
@@ -902,7 +1104,8 @@ func cmdRetry(argv []string) int {
 	if err != nil {
 		return fail(err.Error())
 	}
-	if _, err := resolveProject(f["topic"], f["dir"], false, ""); err != nil {
+	p, err := resolveProject(f["topic"], f["dir"], false, "")
+	if err != nil {
 		return fail(err.Error())
 	}
 	want := strings.Split(f["status"], ",")
@@ -914,19 +1117,171 @@ func cmdRetry(argv []string) int {
 		}
 	}
 	fmt.Printf("sourcelens retry: %d records with status %s\n", n, f["status"])
-	if f.bool("dry-run") || n == 0 {
+	if f.bool("plan") || f.bool("dry-run") || n == 0 {
 		return 0
 	}
-	o := opts{sources: fsrc, types: formats, paperTypes: paperTypes, parallel: 1, heartbeat: 120}
-	stages := [][]step{{newStep("fulltext", "--only-status", f["status"], "--formats", strings.Join(formats, ","),
-		"--sources", strings.Join(fsrc, ","), "--workers", strconv.Itoa(f.int("workers")))},
+	o := opts{sources: fsrc, types: formats, paperTypes: paperTypes, parallel: 1, heartbeat: 120, ext: f["ext"], maxAttMB: 100}
+	stages := [][]step{{newStep("fulltext", append([]string{"--only-status", f["status"], "--formats", strings.Join(formats, ","),
+		"--sources", strings.Join(fsrc, ","), "--workers", strconv.Itoa(f.int("workers"))}, attachmentArgs(o, formats)...)...)},
 		{newStep("catalogue-1")}, {newStep("summary")}}
 	lock, err := acquirePipelineLock("sourcelens retry")
 	if err != nil {
 		return fail("another update is running; try again later")
 	}
-	defer lock.Close()
-	return runPlan(stages, o, "retry")
+	started := time.Now()
+	rc := runPlan(stages, o, "retry", started)
+	lock.Close()
+	if rc == 130 {
+		return rc
+	}
+	if report := writeReport("retry", started, rc, p.topic); report != "" {
+		fmt.Printf("report   : %s\n", report)
+	}
+	return rc
+}
+
+// splitPositionals: (arguments that are not flags or flag values, the rest).
+func splitPositionals(argv []string, spec []flagSpec) ([]string, []string) {
+	kinds := map[string]flagKind{}
+	for _, s := range spec {
+		kinds[s.name] = s.kind
+	}
+	var pos, rest []string
+	for i := 0; i < len(argv); i++ {
+		a := argv[i]
+		if strings.HasPrefix(a, "-") && a != "-" {
+			rest = append(rest, a)
+			name, _, hasEq := strings.Cut(strings.TrimLeft(a, "-"), "=")
+			if k, ok := kinds[name]; ok && !hasEq && k != kBool && i+1 < len(argv) {
+				rest = append(rest, argv[i+1])
+				i++
+			}
+		} else {
+			pos = append(pos, a)
+		}
+	}
+	return pos, rest
+}
+
+// findInput: a file named on the command line, as given, else in the
+// catalogue, else in its exports/.
+func findInput(name string) string {
+	for _, p := range []string{name, rpath(name), rpath("exports", name)} {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			if abs, err := filepath.Abs(p); err == nil {
+				return abs
+			}
+			return p
+		}
+	}
+	return ""
+}
+
+func cmdDownload(argv []string) int {
+	spec := withProject(flagSpec{"types", strings.Join(ftFormats, ","), kStr}, flagSpec{"sources", strings.Join(ftSources, ","), kStr},
+		flagSpec{"ext", "", kStr}, flagSpec{"max-attachment-mb", "100", kInt}, flagSpec{"workers", "12", kInt},
+		flagSpec{"plan", "false", kBool}, flagSpec{"in", "", kStr})
+	pos, rest := splitPositionals(argv, spec)
+	f, err := parseFlags(rest, spec, downloadHelp)
+	if _, ok := err.(errHelp); ok {
+		return 0
+	}
+	if err != nil {
+		return fail(err.Error())
+	}
+	name := f["in"]
+	if name == "" && len(pos) > 0 {
+		name = pos[0]
+	}
+	if len(pos) > 1 || (len(pos) > 0 && f["in"] != "") {
+		return fail("download takes one file")
+	}
+	if name == "" {
+		return fail("name the CSV of rows to download (see: sourcelens download --help)")
+	}
+	formats, err := expand(f["types"], ftFormats, formatGroups, "format")
+	if err != nil {
+		return fail(err.Error())
+	}
+	fsrc, err := expand(f["sources"], ftSources, map[string][]string{"fulltext": ftSources}, "full-text source")
+	if err != nil {
+		return fail(err.Error())
+	}
+	p, err := resolveProject(f["topic"], f["dir"], false, "")
+	if err != nil {
+		return fail(err.Error())
+	}
+	path := findInput(name)
+	if path == "" {
+		return fail("cannot find " + name)
+	}
+	uids := map[string]bool{}
+	for _, u := range readUIDsFile(path) {
+		uids[u] = true
+	}
+	all, _ := readCSV(rpath("progress.csv"))
+	var papers []Row
+	for _, r := range all {
+		if uids[r["uid"]] && paperTypeSet[r["resource_type"]] {
+			papers = append(papers, r)
+		}
+	}
+	fmt.Printf("sourcelens download: %d rows in %s; %d papers in the catalogue\n", len(uids), path, len(papers))
+	if f.bool("plan") || len(papers) == 0 {
+		return 0
+	}
+	started := time.Now()
+	logdir := logDir(started)
+	if err := os.MkdirAll(logdir, 0o755); err != nil {
+		return fail(err.Error())
+	}
+	var sb strings.Builder
+	for _, r := range papers {
+		sb.WriteString(r["uid"] + "\n")
+	}
+	picked := filepath.Join(logdir, "selection.txt")
+	if err := os.WriteFile(picked, []byte(sb.String()), 0o644); err != nil {
+		return fail(err.Error())
+	}
+	o := opts{sources: fsrc, types: formats, paperTypes: paperTypes, parallel: 1, heartbeat: 120, ext: f["ext"],
+		maxAttMB: f.int("max-attachment-mb")}
+	stages := [][]step{{newStep("fulltext", append([]string{"--uids-file", picked, "--formats", strings.Join(formats, ","),
+		"--sources", strings.Join(fsrc, ","), "--workers", strconv.Itoa(f.int("workers"))}, attachmentArgs(o, formats)...)...)},
+		{newStep("catalogue-1")}, {newStep("links")}, {newStep("summary")}}
+	lock, err := acquirePipelineLock("sourcelens download")
+	if err != nil {
+		return fail("another update is running; try again later")
+	}
+	rc := runPlan(stages, o, "download", started)
+	lock.Close()
+	if rc == 130 {
+		return rc
+	}
+	if report := writeReport("download", started, rc, p.topic); report != "" {
+		fmt.Printf("report   : %s\n", report)
+	}
+	return rc
+}
+
+func cmdReport(argv []string) int {
+	f, err := parseFlags(argv, projectSpec, reportHelp)
+	if _, ok := err.(errHelp); ok {
+		return 0
+	}
+	if err != nil {
+		return fail(err.Error())
+	}
+	p, err := resolveProject(f["topic"], f["dir"], false, "")
+	if err != nil {
+		return fail(err.Error())
+	}
+	started := time.Now()
+	path, err := writeRunReport("report", runStamp(started), started, "", commandLine(), p.topic, 0)
+	if err != nil {
+		return fail(err.Error())
+	}
+	fmt.Printf("report: %s\n", path)
+	return 0
 }
 
 func cmdStatus(argv []string) int {
@@ -1024,7 +1379,9 @@ func cmdSources() int {
 	for _, e := range types {
 		fmt.Printf("  %-13s %s\n", e.name, e.desc)
 	}
-	fmt.Println("  groups: fulltext = pdf,md,txt,xml; repos/package = repo; websites = website")
+	fmt.Println("  groups: fulltext = pdf,md,txt,xml; files = pdf,md,txt,xml,attachments; repos/package = repo; " +
+		"websites = website")
+	fmt.Println("  attachments: figures and supplementary files; --ext picks extensions (xlsx,csv,pptx,...)")
 	fmt.Println("\n--paper-types (full-text downloads; default all): " + strings.Join(paperTypes, ", "))
 	fmt.Println("\n--format (export; comma list; default APA)")
 	for _, c := range refCodes {
@@ -1066,8 +1423,8 @@ func hasHelp(args []string) bool {
 	return false
 }
 
-var commands = []string{"update", "retry", "query", "export", "status", "list", "config", "sources", "test",
-	"version", "help"}
+var commands = []string{"update", "download", "retry", "query", "files", "export", "report", "status", "list", "config",
+	"sources", "test", "version", "help"}
 
 func run(argv []string) int {
 	if len(argv) == 0 || argv[0] == "help" || argv[0] == "-h" || argv[0] == "--help" {
@@ -1085,6 +1442,16 @@ func run(argv []string) int {
 		return cmdUpdate(args)
 	case "retry":
 		return cmdRetry(args)
+	case "download":
+		return cmdDownload(args)
+	case "report":
+		return cmdReport(args)
+	case "files":
+		if hasHelp(args) {
+			fmt.Print(filesHelp)
+			return 0
+		}
+		return cmdFiles(args)
 	case "query", "export":
 		if hasHelp(args) {
 			if cmd == "query" {

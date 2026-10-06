@@ -186,7 +186,7 @@ def extend_start(p: Project, start: str) -> bool:
     rx = re.compile(r"""(?m)^(\s*start_date:\s*)["']?\d{4}-\d{2}-\d{2}["']?""")
     if not rx.search(b):
         return False
-    p.config.write_text(rx.sub(lambda m: m.group(1) + '"' + start + '"', b), encoding="utf-8")
+    p.config.write_text(rx.sub(lambda m: m.group(1) + '"' + start + '"', b), encoding="utf-8", newline="\n")
     return True
 
 
@@ -286,7 +286,7 @@ def save_settings(m: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# sourcelens settings for this machine (see: sourcelens config --help)\n"]
     lines += [f"{k}: {yq(m[k])}\n" for k in SETTING_KEYS if m.get(k)]
-    path.write_text("".join(lines), encoding="utf-8")
+    path.write_text("".join(lines), encoding="utf-8", newline="\n")
     os.chmod(path, 0o600)
 
 

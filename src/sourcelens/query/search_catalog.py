@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 
-from sourcelens.common.agelit import read_csv, write_csv
+from sourcelens.common.agelit import write_csv
 from sourcelens.common.flags import parse_flags
 from sourcelens.common.settings import ProjectError, resolve_project
 from sourcelens.query import catalog
@@ -25,6 +25,7 @@ HELP = """sourcelens query [filters] [--limit N] [--out FILE]: filter a catalogu
   sourcelens query --fulltext DunedinPACE --type article,preprint
   sourcelens query --doi 10.18632/aging.101414,10.7554/elife.73420
   sourcelens query --title "epigenetic clock" --range 6m --out recent.csv
+  sourcelens query --in reports/dryrun_<stamp>.csv --summary "single.cell" --ext xlsx --out picked.csv
 
 """ + catalog.PROJECT_HELP + "\n" + catalog.FILTER_HELP + """  --limit N           rows printed (default 50; --out gets all)
   --out FILE          CSV of all matching rows; relative paths go to <catalogue>/exports/
@@ -35,8 +36,7 @@ def run(argv: list[str]) -> int:
     try:
         o = parse_flags(argv, SPEC, HELP)
         resolve_project(o.topic, o.dir, False)
-        rows = read_csv(catalog.progress_path())
-        cols = list(rows[0].keys()) if rows else []
+        rows, cols = catalog.input_rows(o)
         out, hits = catalog.select(o, rows)
     except (ValueError, ProjectError) as exc:
         print(f"sourcelens: {exc}", file=sys.stderr)

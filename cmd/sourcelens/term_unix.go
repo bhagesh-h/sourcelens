@@ -1,3 +1,5 @@
+//go:build !windows
+
 package main
 
 // The terminal on stdout, for the progress bar (Linux and macOS), mirroring

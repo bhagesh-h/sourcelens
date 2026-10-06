@@ -2,6 +2,50 @@
 
 All notable changes to sourcelens. Versions follow semantic versioning.
 
+## Unreleased
+
+### Added
+
+- `--dry-run` fetches metadata only and writes `reports/dryrun_<stamp>.csv`:
+  every row with its summary (abstract, start of the full text, or a site's
+  description), keywords, likely full-text sources, attachments and what an
+  update would download. The old plan-only output is now `--plan`.
+- `query --in FILE` filters a dry-run table or any query output; new filters
+  `--summary`, `--fulltext-status`, `--ext`, `--has-attachments`.
+- `sourcelens download FILE`: downloads the full texts and attachments of the
+  rows in a CSV, such as a filtered dry run.
+- Attachments: the figures, tables and supplementary files (spreadsheets,
+  slides, documents, archives) of open-access PMC articles, with their labels
+  and captions, in `<paper>/attachments/` and
+  `fulltext/attachments_index.csv`; type `attachments`, options `--ext` and
+  `--max-attachment-mb`.
+- `sourcelens files`: lists, copies, moves or deletes full texts and
+  attachments by extension, name, caption, kind, status or paper; moved and
+  deleted files are not downloaded again.
+- A run report after every update, dry run, download and retry:
+  `reports/runreport_<stamp>.html`, one self-contained page with the logo,
+  date, version, the run's steps, the catalogue's numbers and charts, and a
+  searchable, filterable table of every row. `sourcelens report` writes one
+  at any time.
+- Windows: both implementations run on Windows; releases have
+  `sourcelens_windows_amd64.exe` and `sourcelens_windows_arm64.exe`.
+- `install.sh` (Linux, macOS) and `install.ps1` (Windows) install the right
+  binary; releases have `SHA256SUMS`.
+- CI on Linux, macOS (Apple silicon) and Windows; every release binary runs
+  on its own system before the release is published.
+
+### Changed
+
+- A paper without any downloadable file gets no folder, only its index row,
+  with the reason (`fulltext_reason` in `progress.csv`). Folders that earlier
+  versions left with only `metadata.json` are removed on the next update.
+- macOS: one universal binary, `sourcelens_macos`, runs on Apple silicon and
+  Intel; `sourcelens_darwin_arm64` and `sourcelens_darwin_amd64` are copies of
+  it. (The Intel-only file stopped with "bad CPU type in executable" on Apple
+  silicon without Rosetta.)
+- `progress.csv` has two new columns, `fulltext_reason` and `attachments`.
+- Text files are written as UTF-8 with `\n` line ends on every platform.
+
 ## 1.0.0 (2026-10-04)
 
 ### Added

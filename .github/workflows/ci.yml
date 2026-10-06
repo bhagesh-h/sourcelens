@@ -1,13 +1,20 @@
 name: ci
 
+# Both implementations on Linux, macOS (Apple silicon) and Windows.
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   go:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -15,19 +22,34 @@ jobs:
           go-version: "1.23"
       - run: go vet ./...
       - run: go test ./...
-      - run: make go && bin/sourcelens test
+      - name: Build and run the append-only check
+        shell: bash
+        run: |
+          CGO_ENABLED=0 go build -o bin/sourcelens$([ "$RUNNER_OS" = Windows ] && echo .exe) ./cmd/sourcelens
+          bin/sourcelens version
+          bin/sourcelens test
 
   python:
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python: ["3.10", "3.12", "3.13"]
+        include:
+          - {os: ubuntu-latest, python: "3.10"}
+          - {os: ubuntu-latest, python: "3.12"}
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: macos-latest, python: "3.12"}
+          - {os: windows-latest, python: "3.12"}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install -e ".[dev]"
-      - run: pytest -q
+      # installed from a built wheel (not editable): the package as users get it,
+      # and Windows checkouts have no symlinks
+      - run: pip install ".[dev]"
+      - run: python -m pytest -q
+      - run: sourcelens version
       - run: sourcelens test
-      - run: ruff check src tests
+      - if: runner.os == 'Linux'
+        run: ruff check src tests

@@ -17,8 +17,8 @@ import (
 
 var progressCols = []string{"added_on", "date", "year", "resource_type", "tier", "category", "modality",
 	"entities", "species", "title", "authors", "venue", "doi", "pmid", "pmcid",
-	"url", "code_links", "related", "open_access", "license", "fulltext_status",
-	"fulltext_pdf", "fulltext_md", "fulltext_txt", "metadata_file", "cited_by",
+	"url", "code_links", "related", "open_access", "license", "fulltext_status", "fulltext_reason",
+	"fulltext_pdf", "fulltext_md", "fulltext_txt", "metadata_file", "attachments", "cited_by",
 	"details", "matched_groups", "found_by", "local_refs", "status", "uid", "notes", "user_tags"}
 
 var keepOnUpdate = map[string]bool{"added_on": true, "notes": true, "user_tags": true}
@@ -215,6 +215,7 @@ func stepCatalogue(args []string, log *Logger) error {
 	}
 	seeds := loadSeedInfo()
 	ftRows, _ := readCSV(rpath("fulltext", "fulltext_index.csv"))
+	atts := readAttIndex()
 	ft := map[string]Row{}
 	for _, r := range ftRows {
 		ft[r["uid"]] = r
@@ -319,8 +320,10 @@ func stepCatalogue(args []string, log *Logger) error {
 			"venue": venueName(str(rec, "journal")), "doi": doi, "pmid": str(rec, "pmid"), "pmcid": str(rec, "pmcid"),
 			"url": url, "code_links": strings.Join(links[uid], "; "), "related": "", "open_access": oa,
 			"license": orDefault(f["license"], str(rec, "license")), "fulltext_status": f["status"],
-			"fulltext_pdf": fp("paper.pdf", "has_pdf"), "fulltext_md": fp("paper.md", "has_md"),
-			"fulltext_txt": fp("paper.txt", "has_txt"), "metadata_file": meta, "cited_by": citedS,
+			"fulltext_reason": f["reason"],
+			"fulltext_pdf":    fp("paper.pdf", "has_pdf"), "fulltext_md": fp("paper.md", "has_md"),
+			"fulltext_txt": fp("paper.txt", "has_txt"), "metadata_file": meta, "attachments": attSummary(atts[uid]),
+			"cited_by":       citedS,
 			"matched_groups": strings.Join(sortedKeys(groups[uid]), "; "),
 			"found_by":       strings.Join(sortedKeys(fb), "; "), "local_refs": refs, "uid": uid}
 		oaDate := openalex[uid]["publication_date"]

@@ -38,7 +38,7 @@ def rec(uid_doi: str, date: str, title: str) -> dict:
 def write_store(research: Path, records: list[dict]) -> None:
     p = research / "corpus" / "records.jsonl.gz"
     p.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(p, "wt", encoding="utf-8") as fh:
+    with gzip.open(p, "wt", encoding="utf-8", newline="\n") as fh:
         for r in records:
             fh.write(json.dumps(r) + "\n")
 

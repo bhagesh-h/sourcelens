@@ -47,8 +47,42 @@ Faster, smaller first runs:
 ```bash
 sourcelens "CRISPR base editing" --types papers           # metadata only, no downloads
 sourcelens "CRISPR base editing" --range 1m               # only the last month
-sourcelens "CRISPR base editing" --dry-run                # show what would run
+sourcelens "CRISPR base editing" --plan                   # show what would run
 ```
+
+## Dry run: look first, then download what you pick
+
+A dry run searches and fetches metadata, but downloads no full texts and no
+attachments. It writes a table of everything it found, which you filter, and
+then you download only the rows you kept:
+
+```bash
+sourcelens "CRISPR base editing" --dry-run
+sourcelens query --topic "CRISPR base editing" --in reports/dryrun_<stamp>.csv \
+    --summary "prime editing|off-target" --type article,review --out picked.csv
+sourcelens download --topic "CRISPR base editing" exports/picked.csv
+```
+
+The dry run prints its numbers and the exact path of its table,
+`reports/dryrun_YYYY_MM_DD_HH_MM_SS.csv`. The table has every column of
+`progress.csv` plus:
+
+| column | meaning |
+|---|---|
+| `summary` | the abstract; else the start of the downloaded full text; else a repository's or website's description |
+| `summary_from` | `abstract`, `fulltext` or `description` |
+| `keywords` | author keywords and MeSH headings |
+| `fulltext_sources` | where an open full text may come from: `pmc`, `biorxiv`, `europepmc`, `arxiv`, `unpaywall`, `openalex` |
+| `pending` | what the next update would download: `full text`, `attachments`, with `(retry)` after a failed attempt |
+| `attachments` | files known for the paper, e.g. `0/5: jpg 3, pdf 1, xlsx 1` (downloaded/known, then by type) |
+
+Filter it with any `query` option (`--in` reads it instead of
+`progress.csv`), with your own tools, or by deleting rows in a spreadsheet;
+`download` only needs the `uid` (or `doi`) column of what is left.
+
+The dry run lists the attachments of open-access PMC articles (one quick
+request per article, cached in `fulltext/attachments_index.csv`), so you can
+pick by file type before downloading anything.
 
 ## How a topic becomes a search
 
@@ -83,9 +117,12 @@ The time window:
 |---|---|
 | `sourcelens "TOPIC"` | same as `sourcelens update --topic "TOPIC"` |
 | `update` | search, download and rebuild a catalogue (the default topic when no `--topic` is given) |
+| `download` | download the full texts and attachments of the rows in a CSV, such as a filtered dry run |
 | `retry` | download again the full texts that were rate-limited, incomplete or failed |
-| `query` | filter a catalogue; print the rows or save them as CSV |
+| `query` | filter a catalogue or a dry-run table; print the rows or save them as CSV |
+| `files` | list, copy, move or delete downloaded files by extension, name, kind or paper |
 | `export` | write catalogue entries as references |
+| `report` | write the run report of a catalogue now |
 | `status` | size, full-text coverage, recent runs and failures of a catalogue |
 | `list` | the catalogues in the output folder |
 | `config` | show or change the settings of this machine |
@@ -111,7 +148,7 @@ Every command that works on a catalogue takes:
 |---|---|---|
 | `--range` | span back from `--to`: `1d 7d 2w 1m 6m 1y 5y` | the catalogue's window |
 | `--from`, `--to` | `2024`, `2024-03`, `2024-03-15`, `today`, or a span (`--from 2y`) | window start, today |
-| `--types` | `papers` (metadata), `pdf`, `md`, `txt`, `xml`, `repo`, `website`, `all` | all |
+| `--types` | `papers` (metadata), `pdf`, `md`, `txt`, `xml`, `attachments`, `repo`, `website`, `all`; groups `fulltext` (pdf, md, txt, xml) and `files` (the same plus attachments) | all |
 | `--sources` | `pubmed europepmc arxiv openalex local pmc biorxiv unpaywall github cran bioconductor pypi zenodo websites`, or groups `literature`, `fulltext`, `repos`, `packages` | all |
 | `--paper-types` | `article review preprint report thesis "conference paper" "book chapter"` (full texts only) | all |
 | `--tiers` | full texts for `landmark,core,related` rows | all three |
@@ -121,7 +158,10 @@ Every command that works on a catalogue takes:
 | `--min-stars` | GitHub search hits need this many stars | 3 |
 | `--heartbeat` | seconds between progress lines when the output is not a terminal (0: no progress output) | 120 |
 | `--stop-on-error` | stop after the first failed stage | |
-| `--dry-run` | print the plan and a full-text estimate | |
+| `--ext` | attachment file extensions to download, e.g. `xlsx,csv,pptx` | all |
+| `--max-attachment-mb` | larger attachments are listed but not downloaded (0: no limit) | 100 |
+| `--dry-run` | metadata only, no downloads; writes the dry-run table (see above) | |
+| `--plan` | print the plan and a full-text estimate, then stop | |
 
 Options that take several values accept a comma list, for example
 `--sources pubmed,arxiv`.
@@ -147,6 +187,21 @@ The steps of an update run in stages:
 | 8 | final catalogue build |
 | 9 | summary of findings |
 
+### download
+
+`sourcelens download FILE` downloads the full texts and attachments of the
+rows in FILE, a CSV with a `uid` or `doi` column, then rebuilds the catalogue.
+Rows downloaded before are checked again; attachments not downloaded before
+(another extension, a failed download) are fetched.
+
+| option | values | default |
+|---|---|---|
+| `--types` | `pdf`, `md`, `txt`, `xml`, `attachments` | all |
+| `--sources` | full-text sources, as for `update` | all |
+| `--ext`, `--max-attachment-mb` | as for `update` | all, 100 |
+| `--workers` | parallel downloads | 12 |
+| `--plan` | count the rows and stop | |
+
 ### query
 
 Filters combine with AND. A comma list within one filter combines with OR.
@@ -169,10 +224,68 @@ sourcelens query --added-since 2026-10-01 --out new.csv         # what the last 
 | `--added-since DATE` | rows that entered the catalogue on or after DATE |
 | `--has-fulltext` | rows with a downloaded Markdown full text |
 | `--fulltext RE` | regular expression searched in the downloaded full texts; prints the matching passage |
+| `--summary RE` | regular expression over the summary (abstract, start of the full text, or a site's description) and keywords |
+| `--fulltext-status LIST` | `ok`, `partial`, `none`, `deferred`, `error`, `removed`; `-` for not tried |
+| `--ext LIST` | rows with attachments of these file types |
+| `--has-attachments` | rows with attachments |
+| `--in FILE` | filter this CSV (a dry-run table or a query output) instead of `progress.csv` |
 | `--sort` | `date`, `cited_by` (highest first), `title`, `author` |
 
 `query` prints 50 rows (`--limit N` changes that). `--out FILE` saves every
 matching row as CSV.
+
+### files
+
+Lists the files of the catalogue: full texts (`paper.pdf`, `paper.md`,
+`paper.txt`, `paper.jats.xml`) and attachments (figures, tables,
+supplementary files). Every `query` filter picks the papers; these pick the
+files:
+
+| option | meaning |
+|---|---|
+| `--ext LIST` | file extensions, e.g. `pdf`, `xlsx,csv`, `pptx,docx`, `jpg,png` |
+| `--name RE` | regular expression over the file name, label and caption ("Figure 2", "eTable 1") |
+| `--kind LIST` | `paper`, `figure`, `table`, `supplementary`; `attachment` for the last three |
+| `--status LIST` | `ok` (on disk, the default), `listed` (known, not downloaded), `skipped`, `failed`, `moved`, `deleted`, or `all` |
+
+Then one action:
+
+| option | meaning |
+|---|---|
+| (none) | print the files; `--limit N` lines, `--out FILE` all of them as CSV |
+| `--copy-to DIR` | copy to `DIR/<paper>/<file>` (attachments under `DIR/<paper>/attachments/`), with a list in `DIR/sourcelens_files.csv` |
+| `--move-to DIR` | the same, then the files leave the catalogue |
+| `--delete --yes` | delete the files |
+| `--flat` | with `--copy-to` or `--move-to`: `DIR/<paper>__<file>`, no subfolders |
+
+```bash
+sourcelens files --ext xlsx,csv --copy-to ~/tables
+sourcelens files --kind figure --title "epigenetic clock" --range 2y --copy-to ~/figures --flat
+sourcelens files --in exports/picked.csv --kind paper --ext pdf --copy-to ~/to-read
+sourcelens files --status listed --ext pptx           # slides known but not downloaded
+sourcelens files --ext txt --delete --yes
+```
+
+Moved and deleted files are recorded in the indexes, the paper's
+`metadata.json` and `progress.csv`, so later updates do not download them
+again.
+
+### report
+
+Every `update`, dry run, `download` and `retry` writes
+`reports/runreport_YYYY_MM_DD_HH_MM_SS.html`, and `sourcelens report` writes
+one for the catalogue as it is. It is a single file that opens in any
+browser, without a network connection:
+
+- the logo, the date and time, the version and the command;
+- the steps of the run, with their time and last message;
+- the catalogue's numbers: rows, papers, full texts downloaded and missing
+  with the reasons, pending downloads, attachments by file type, code and
+  data, websites, rows per year, types, tiers, categories, venues;
+- every row in a table you can search (title, authors, venue, DOI, summary,
+  keywords, reason), filter (type, tier, full-text status, years, with
+  attachments, added on the run's date) and sort; a click on a row shows its
+  details, and the rows you see can be saved as CSV.
 
 ### export
 

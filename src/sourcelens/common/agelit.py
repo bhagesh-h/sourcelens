@@ -197,13 +197,11 @@ def acquire_pipeline_lock(label: str = "update"):
     progress.csv at the same time. The lock is released when the returned file
     object is closed or the process exits.
     """
-    import fcntl
+    from sourcelens.common import locks
     lock = pipeline_lock_path()
     lock.parent.mkdir(parents=True, exist_ok=True)
-    fh = open(lock, "a+")
-    try:
-        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+    fh = open(lock, "a+", encoding="utf-8", newline="\n")
+    if not locks.try_lock(fh):
         fh.close()
         return None
     fh.seek(0)
@@ -405,8 +403,13 @@ def slug(uid: str, maxlen: int = 120) -> str:
 def open_any(path: Path, mode: str = "rt"):
     path = Path(path)
     if path.suffix == ".gz":
-        return gzip.open(path, mode, encoding=None if "b" in mode else "utf-8")
-    return open(path, mode, encoding=None if "b" in mode else "utf-8")
+        if "b" in mode:
+            return gzip.open(path, mode)
+        return gzip.open(path, mode, encoding="utf-8", newline="\n" if "w" in mode else None)
+    if "b" in mode:
+        return open(path, mode)
+    # "\n" on every platform, so files are the same on Windows
+    return open(path, mode, encoding="utf-8", newline="\n" if "w" in mode else None)
 
 
 def read_jsonl(path: Path) -> Iterator[dict]:
@@ -456,7 +459,7 @@ def write_json(path: Path, obj) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(obj, fh, ensure_ascii=False, indent=2)
     tmp.replace(path)
 

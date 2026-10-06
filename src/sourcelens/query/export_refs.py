@@ -66,6 +66,6 @@ def run(argv: list[str]) -> int:
     for c in codes:
         path = out if len(codes) == 1 and out.suffix else out.with_name(out.name + refs.EXT[c])
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(refs.render(c, items), encoding="utf-8")
+        path.write_text(refs.render(c, items), encoding="utf-8", newline="\n")
         print(f"wrote {path}", file=sys.stderr)
     return 0

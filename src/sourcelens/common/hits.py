@@ -8,8 +8,7 @@ row both know, first_seen is the earliest and last_seen the latest.
 
 from __future__ import annotations
 
-import fcntl
-
+from sourcelens.common import locks
 from sourcelens.common.agelit import CORPUS, read_csv, write_csv
 
 HITS = CORPUS / "search_hits.csv"
@@ -38,7 +37,7 @@ def record(hits: dict, uid: str, group: str, scope: str, source: str, run: str) 
 def save(hits: dict) -> None:
     HITS.parent.mkdir(parents=True, exist_ok=True)
     with open(HITS.with_name(".search_hits.lock"), "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        locks.lock(lock)
         merged = load()
         for k, row in hits.items():
             old = merged.get(k)

@@ -11,9 +11,9 @@ source, a non-empty one is kept, lists and source sets are unioned.
 
 from __future__ import annotations
 
-import fcntl
 from pathlib import Path
 
+from sourcelens.common import locks
 from sourcelens.common.agelit import CORPUS, norm_doi, norm_pmcid, norm_pmid, read_jsonl, write_jsonl
 
 STORE = CORPUS / "records.jsonl.gz"
@@ -98,7 +98,7 @@ class Store:
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path.with_name(".records.lock"), "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            locks.lock(lock)
             for r in read_jsonl(self.path):
                 if self.find(r) is None:
                     self.recs[r["uid"]] = r

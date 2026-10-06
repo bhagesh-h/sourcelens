@@ -1,18 +1,24 @@
 name: release
 
-# Push a tag such as v1.0.0 to build the Go binaries for Linux and macOS and
-# attach them to a GitHub release. The Python package is published by
-# publish.yml from the same tag.
+# Push a tag such as v1.1.0 to build the Go binaries and attach them to a
+# GitHub release, after each one has run on its own system:
+#   sourcelens_linux_amd64, sourcelens_linux_arm64
+#   sourcelens_macos (Apple silicon and Intel in one file; also under the
+#   older names sourcelens_darwin_arm64 and sourcelens_darwin_amd64)
+#   sourcelens_windows_amd64.exe, sourcelens_windows_arm64.exe
+#   SHA256SUMS
+# The Python package is published by publish.yml from the same tag.
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  binaries:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +26,53 @@ jobs:
         with:
           go-version: "1.23"
       - run: make release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+
+  test:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, bin: sourcelens_linux_amd64}
+          - {os: ubuntu-24.04-arm, bin: sourcelens_linux_arm64}
+          - {os: macos-latest, bin: sourcelens_macos}
+          - {os: windows-latest, bin: sourcelens_windows_amd64.exe}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist
+      - name: Run the binary
+        shell: bash
+        run: |
+          chmod +x dist/* || true
+          dist/${{ matrix.bin }} version
+          dist/${{ matrix.bin }} test
+      - name: Check the universal macOS file
+        if: runner.os == 'macOS'
+        run: |
+          lipo -info dist/sourcelens_macos
+          lipo -verify_arch arm64 x86_64 dist/sourcelens_macos
+          cmp dist/sourcelens_macos dist/sourcelens_darwin_arm64
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then arch -x86_64 dist/sourcelens_macos version; else echo "Rosetta not installed: Intel slice not run"; fi
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/sourcelens_*
+          files: |
+            dist/sourcelens_*
+            dist/SHA256SUMS
           generate_release_notes: true
