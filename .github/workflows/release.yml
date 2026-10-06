@@ -12,6 +12,10 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # pull requests that change the Go code build and run every binary too;
+  # only a tag publishes a release
+  pull_request:
+    paths: ["cmd/**", "tools/**", "go.mod", "go.sum", "Makefile", ".github/workflows/release.yml"]
   workflow_dispatch:
 
 permissions:
