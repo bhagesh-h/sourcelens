@@ -61,7 +61,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           lipo -info dist/sourcelens_macos
-          lipo -verify_arch arm64 x86_64 dist/sourcelens_macos
+          lipo dist/sourcelens_macos -verify_arch arm64 x86_64
           cmp dist/sourcelens_macos dist/sourcelens_darwin_arm64
           if arch -x86_64 /usr/bin/true 2>/dev/null; then arch -x86_64 dist/sourcelens_macos version; else echo "Rosetta not installed: Intel slice not run"; fi
 
