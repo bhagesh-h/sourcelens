@@ -43,7 +43,7 @@ file in a browser to see changes. `.github/workflows/pages.yml` publishes the
 ## Releasing
 
 Set the version in `src/sourcelens/__init__.py` and `cmd/sourcelens/main.go`,
-then push a tag such as `v1.0.1`. Two workflows run:
+then push a tag such as `v1.0.2`. Two workflows run:
 
 - `publish` uploads the Python package to PyPI;
 - `release` builds the Go binaries, runs each one on its own system (Linux

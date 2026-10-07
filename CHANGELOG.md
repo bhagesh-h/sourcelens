@@ -2,7 +2,7 @@
 
 All notable changes to sourcelens. Versions follow semantic versioning.
 
-## Unreleased
+## 1.0.1 (2026-10-07)
 
 ### Added
 
